@@ -1,6 +1,6 @@
 import { DragDropProvider } from '@dnd-kit/react'
 import { isSortableOperation, useSortable } from '@dnd-kit/react/sortable'
-import { M1_CONTENT } from '../content/m1'
+import { PROTOTYPE_CONTENT } from '../content/prototype'
 import type { CardId } from '../game/types'
 
 interface PriorityListProps {
@@ -21,7 +21,7 @@ function SortableCard({ cardId, index, total, onMove }: SortableCardProps) {
     index,
     group: 'autoplay-priority',
   })
-  const card = M1_CONTENT.cards[cardId]
+  const card = PROTOTYPE_CONTENT.cards[cardId]
 
   return (
     <li ref={(node) => ref(node)} className={isDragging ? 'priority-item is-dragging' : 'priority-item'}>

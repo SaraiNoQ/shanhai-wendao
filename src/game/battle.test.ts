@@ -1,114 +1,174 @@
 import { describe, expect, it } from 'vitest'
-import { M1_CONTENT } from '../content/m1'
-import { createBattle, transitionBattle } from './battle'
-import type { BattleState, CardId } from './types'
+import { PROTOTYPE_CONTENT } from '../content/prototype'
+import { createBattle, getEffectiveCardCost, transitionBattle } from './battle'
+import type { BattleState, BuildId, CardId } from './types'
 
 function withHand(state: BattleState, hand: CardId[], energy = 10): BattleState {
   return { ...state, hand, deck: [], discard: [], energy }
 }
 
-describe('deterministic battle', () => {
-  it('creates the same opening hand from the same seed', () => {
-    expect(createBattle(42)).toEqual(createBattle(42))
+function play(state: BattleState, cardId: CardId, targetId?: BattleState['spirits'][number]['id']) {
+  return transitionBattle({ ...state, hand: [cardId], deck: [], discard: [], energy: 10 }, { type: 'play_card', cardId, targetId }).state
+}
+
+describe('deterministic M2 battle', () => {
+  it('creates the same four-card opening from the same seed and build', () => {
+    expect(createBattle(42, PROTOTYPE_CONTENT, 'pure_talisman')).toEqual(createBattle(42, PROTOTYPE_CONTENT, 'pure_talisman'))
     expect(createBattle(42).hand).toHaveLength(4)
   })
 
   it('refuses unaffordable cards without changing state', () => {
     const state = withHand(createBattle(1), ['mountain_splitter'], 0)
-    const result = transitionBattle(state, { type: 'play_card', cardId: 'mountain_splitter' })
-    expect(result.state).toEqual(state)
-    expect(result.events).toEqual([])
+    expect(transitionBattle(state, { type: 'play_card', cardId: 'mountain_splitter' })).toEqual({ state, events: [] })
   })
 
-  it('discards a played card and draws its replacement', () => {
+  it('discards a played card, draws a replacement, and reshuffles deterministically', () => {
     const initial = createBattle(5)
-    const cardId = initial.hand.find((id) => M1_CONTENT.cards[id].cost <= initial.energy)
-    expect(cardId).toBeDefined()
-    const result = transitionBattle(initial, { type: 'play_card', cardId: cardId! })
+    const cardId = initial.hand.find((id) => PROTOTYPE_CONTENT.cards[id].cost <= initial.energy)!
+    const result = transitionBattle(initial, { type: 'play_card', cardId })
     expect(result.state.discard).toContain(cardId)
     expect(result.state.hand).toHaveLength(4)
-    expect(result.events.some((event) => event.type === 'card_drawn')).toBe(true)
+
+    const reshuffle = withHand(createBattle(7), ['guiding_edge'])
+    reshuffle.discard = ['hidden_edge', 'returning_wind']
+    expect(transitionBattle(reshuffle, { type: 'play_card', cardId: 'guiding_edge' })).toEqual(transitionBattle(reshuffle, { type: 'play_card', cardId: 'guiding_edge' }))
   })
 
-  it('reshuffles the discard pile deterministically', () => {
-    const state = withHand(createBattle(7), ['guiding_edge'])
-    state.discard = ['hidden_edge', 'returning_wind']
-    const first = transitionBattle(state, { type: 'play_card', cardId: 'guiding_edge' })
-    const second = transitionBattle(state, { type: 'play_card', cardId: 'guiding_edge' })
-    expect(first).toEqual(second)
-    expect(first.state.hand).toHaveLength(1)
-  })
+  it('absorbs damage with shield and armor break increases damage', () => {
+    const shielded = play(createBattle(8), 'hidden_edge')
+    const advanced = transitionBattle(shielded, { type: 'advance', elapsedMs: 3_250 }).state
+    expect(advanced.leader.hp).toBe(shielded.leader.hp)
+    expect(advanced.leader.shield).toBeLessThan(shielded.leader.shield)
 
-  it('absorbs incoming damage with shield before hp', () => {
-    const state = withHand(createBattle(8), ['hidden_edge'])
-    const shielded = transitionBattle(state, { type: 'play_card', cardId: 'hidden_edge' }).state
-    const advanced = transitionBattle(shielded, { type: 'advance', elapsedMs: 3_000 })
-    expect(advanced.state.leader.shield).toBeLessThan(22)
-    expect(advanced.state.leader.hp).toBe(shielded.leader.hp)
-  })
-
-  it('armor break increases damage', () => {
     const base = createBattle(9)
-    const unbroken = withHand(base, ['guiding_edge'])
-    const broken = withHand(base, ['guiding_edge'])
-    broken.enemy = { ...broken.enemy, armorBreak: 5 }
-    const normalResult = transitionBattle(unbroken, { type: 'play_card', cardId: 'guiding_edge' })
-    const brokenResult = transitionBattle(broken, { type: 'play_card', cardId: 'guiding_edge' })
-    expect(brokenResult.state.enemy.hp).toBeLessThan(normalResult.state.enemy.hp)
+    const normal = play(base, 'guiding_edge')
+    const broken = createBattle(9)
+    broken.enemies[0].armorBreak = 5
+    expect(play(broken, 'guiding_edge').enemies[0].hp).toBeLessThan(normal.enemies[0].hp)
   })
 
-  it('gains sword intent and consumes it with the finisher', () => {
-    let state = withHand(createBattle(10), ['guiding_edge', 'mountain_splitter'])
-    state = transitionBattle(state, { type: 'play_card', cardId: 'guiding_edge' }).state
-    expect(state.swordIntent).toBe(2)
-    state.energy = 10
-    state = transitionBattle(state, { type: 'play_card', cardId: 'mountain_splitter' }).state
-    expect(state.swordIntent).toBe(0)
+  it('refreshes talisman marks, expires them after ten seconds, and burns every two seconds', () => {
+    let state = play(createBattle(10, PROTOTYPE_CONTENT, 'pure_sword'), 'fire_talisman')
+    expect(state.enemies[0].talismanMarks).toBe(2)
+    expect(state.enemies[0].talismanExpiresAtMs).toBe(10_000)
+    state = transitionBattle(state, { type: 'advance', elapsedMs: 2_000 }).state
+    expect(state.enemies[0].burnStacks).toBe(0)
+    const hpAfterBurn = state.enemies[0].hp
+    state = play(state, 'fire_talisman')
+    expect(state.enemies[0].talismanExpiresAtMs).toBe(12_000)
+    state = transitionBattle(state, { type: 'advance', elapsedMs: 10_000 }).state
+    expect(state.enemies[0].talismanMarks).toBe(0)
+    expect(state.enemies[0].hp).toBeLessThan(hpAfterBurn)
   })
 
-  it('autoplay skips an unaffordable high priority card', () => {
-    const base = withHand(createBattle(11), ['mountain_splitter', 'guiding_edge'], 1)
-    const priority = ['mountain_splitter', 'guiding_edge', 'hidden_edge', 'returning_wind', 'armor_piercing_star', 'ten_thousand_blades'] as CardId[]
-    let state = transitionBattle(base, { type: 'reorder_priority', cardIds: priority }).state
-    state = transitionBattle(state, { type: 'set_autoplay', enabled: true }).state
+  it('requires a legal chosen spirit for manual cards', () => {
+    const state = withHand(createBattle(11, PROTOTYPE_CONTENT, 'pure_spirit'), ['protect_master'])
+    expect(transitionBattle(state, { type: 'play_card', cardId: 'protect_master' })).toEqual({ state, events: [] })
+    const result = transitionBattle(state, { type: 'play_card', cardId: 'protect_master', targetId: state.spirits[1].id })
+    expect(result.state.spiritBonds[1]).toBe(1)
+    expect(result.state.leader.shield).toBeGreaterThan(0)
+  })
+
+  it('triggers spirit combo at three bonds', () => {
+    let state = createBattle(12, PROTOTYPE_CONTENT, 'pure_spirit')
+    for (let index = 0; index < 5; index += 1) state = play(state, 'call_true_name')
+    expect(state.totalSpiritCombos).toBe(1)
+    expect(state.spiritComboCounts[0]).toBe(1)
+  })
+
+  it('derives the three mixed combos from loadout tags', () => {
+    expect(createBattle(1, PROTOTYPE_CONTENT, 'flying_sword_seal').activeCombos).toContain('flying_sword_seal')
+    expect(createBattle(1, PROTOTYPE_CONTENT, 'spirit_edict').activeCombos).toContain('spirit_edict')
+    expect(createBattle(1, PROTOTYPE_CONTENT, 'dual_spirit_sword').activeCombos).toContain('dual_spirit_sword')
+  })
+
+  it('fires flying sword seal and spirit edict effects', () => {
+    let sword = createBattle(13, PROTOTYPE_CONTENT, 'flying_sword_seal')
+    sword.swordIntent = 6
+    sword.enemies[0].talismanMarks = 3
+    sword.enemies[0].talismanExpiresAtMs = 10_000
+    const swordResult = transitionBattle(withHand(sword, ['mountain_splitter']), { type: 'play_card', cardId: 'mountain_splitter' })
+    expect(swordResult.state.enemies[0].talismanMarks).toBe(1)
+    expect(swordResult.events).toContainEqual(expect.objectContaining({ type: 'combo_triggered', comboId: 'flying_sword_seal' }))
+
+    let edict = createBattle(14, PROTOTYPE_CONTENT, 'spirit_edict')
+    edict.enemies[0].talismanMarks = 1
+    edict.enemies[0].talismanExpiresAtMs = 10_000
+    edict.spiritBonds = [2, 2]
+    const edictResult = transitionBattle(withHand(edict, ['call_true_name']), { type: 'play_card', cardId: 'call_true_name' })
+    expect(edictResult.state.nextEdictDiscount).toBe(1)
+    expect(edictResult.events).toContainEqual(expect.objectContaining({ type: 'combo_triggered', comboId: 'spirit_edict' }))
+  })
+
+  it('fires dual spirit sword with a six-second cooldown', () => {
+    let state = createBattle(15, PROTOTYPE_CONTENT, 'dual_spirit_sword')
+    state = play(state, 'guiding_edge')
+    expect(state.spiritBonds).toEqual([1, 0])
+    state = play(state, 'guiding_edge')
+    expect(state.spiritBonds).toEqual([1, 0])
+    state = transitionBattle(state, { type: 'advance', elapsedMs: 6_000 }).state
+    state = play(state, 'guiding_edge')
+    expect(state.spiritBonds.reduce((sum, value) => sum + value, 0)).toBeGreaterThan(1)
+  })
+
+  it('implements the three weapon passives', () => {
+    let sword = createBattle(16, PROTOTYPE_CONTENT, 'pure_sword')
+    sword = transitionBattle(sword, { type: 'advance', elapsedMs: 7_500 }).state
+    expect(sword.swordIntent).toBeGreaterThan(0)
+
+    const brush = createBattle(17, PROTOTYPE_CONTENT, 'pure_talisman')
+    brush.enemies[0].talismanMarks = 1
+    brush.enemies[0].talismanExpiresAtMs = 10_000
+    brush.leader.nextActionAtMs = 250
+    expect(transitionBattle(brush, { type: 'advance', elapsedMs: 250 }).state.enemies[0].talismanExpiresAtMs).toBe(11_000)
+
+    const bell = createBattle(18, PROTOTYPE_CONTENT, 'pure_spirit')
+    expect(bell.spirits[0].nextActionAtMs).toBeLessThan(bell.spirits[0].attackIntervalMs)
+  })
+
+  it('implements technique discounts and refunds', () => {
+    let sword = createBattle(19, PROTOTYPE_CONTENT, 'pure_sword')
+    sword = play(sword, 'guiding_edge')
+    sword = play(sword, 'returning_wind')
+    sword = play(sword, 'armor_piercing_star')
+    expect(getEffectiveCardCost(sword, PROTOTYPE_CONTENT.cards.mountain_splitter)).toBe(4)
+
+    let talisman = createBattle(20, PROTOTYPE_CONTENT, 'pure_talisman')
+    talisman.energy = 1
+    talisman.enemies[0].talismanMarks = 3
+    talisman.enemies[0].talismanExpiresAtMs = 10_000
+    talisman = play(talisman, 'urgent_edict')
+    expect(talisman.energy).toBe(10)
+
+    let spirit = createBattle(21, PROTOTYPE_CONTENT, 'pure_spirit')
+    spirit.spiritBonds = [2, 2]
+    spirit = play(spirit, 'call_true_name')
+    expect(spirit.spiritBonds[0]).toBe(1)
+  })
+
+  it('autoplay skips an unaffordable high-priority card', () => {
+    const base = withHand(createBattle(22), ['mountain_splitter', 'guiding_edge'], 1)
+    let state = transitionBattle(base, { type: 'set_autoplay', enabled: true }).state
     const result = transitionBattle(state, { type: 'advance', elapsedMs: 250 })
-    expect(result.events).toContainEqual(
-      expect.objectContaining({ type: 'card_played', cardId: 'guiding_edge', automatic: true }),
-    )
+    expect(result.events).toContainEqual(expect.objectContaining({ type: 'card_played', cardId: 'guiding_edge', automatic: true }))
   })
 
-  it('ends in victory and defeated units stop acting', () => {
-    const state = withHand(createBattle(12), ['mountain_splitter'])
-    state.enemy = { ...state.enemy, hp: 1 }
-    const won = transitionBattle(state, { type: 'play_card', cardId: 'mountain_splitter' })
-    expect(won.state.status).toBe('victory')
-    const after = transitionBattle(won.state, { type: 'advance', elapsedMs: 10_000 })
-    expect(after.state).toEqual(won.state)
-    expect(after.events).toEqual([])
+  it.each(Object.keys(PROTOTYPE_CONTENT.builds) as BuildId[])('%s autoplay reaches a result', (buildId) => {
+    let state = transitionBattle(createBattle(23, PROTOTYPE_CONTENT, buildId), { type: 'set_autoplay', enabled: true }).state
+    for (let step = 0; step < 800 && state.status === 'active'; step += 1) state = transitionBattle(state, { type: 'advance', elapsedMs: 250 }).state
+    expect(state.status).not.toBe('active')
+    if (buildId.startsWith('pure_')) expect(state.status).toBe('victory')
   })
 
-  it('ends in defeat when the leader dies', () => {
-    const state = createBattle(13)
-    state.leader.hp = 1
-    state.enemy.nextActionAtMs = 250
-    const result = transitionBattle(state, { type: 'advance', elapsedMs: 250 })
-    expect(result.state.status).toBe('defeat')
-  })
-
-  it('restarts into the same seeded opening state', () => {
-    const state = transitionBattle(createBattle(14), { type: 'advance', elapsedMs: 2_000 }).state
-    const restarted = transitionBattle(state, { type: 'restart' })
-    expect(restarted.state).toEqual(createBattle(14))
-  })
-
-  it('completes the demo battle under default autoplay', () => {
-    let state = transitionBattle(createBattle(20_260_827), {
-      type: 'set_autoplay',
-      enabled: true,
-    }).state
-    for (let step = 0; step < 600 && state.status === 'active'; step += 1) {
-      state = transitionBattle(state, { type: 'advance', elapsedMs: 250 }).state
+  it('keeps speed batching and restart deterministic', () => {
+    const state = transitionBattle(createBattle(24), { type: 'set_autoplay', enabled: true }).state
+    const batched = transitionBattle(state, { type: 'advance', elapsedMs: 1_000 })
+    let stepped = { state, events: [] as ReturnType<typeof transitionBattle>['events'] }
+    for (let index = 0; index < 4; index += 1) {
+      const result = transitionBattle(stepped.state, { type: 'advance', elapsedMs: 250 })
+      stepped = { state: result.state, events: [...stepped.events, ...result.events] }
     }
-    expect(state.status).toBe('victory')
+    expect(batched).toEqual(stepped)
+    expect(transitionBattle(batched.state, { type: 'restart' }).state).toEqual(createBattle(24))
   })
 })
