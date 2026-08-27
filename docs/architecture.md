@@ -103,7 +103,16 @@ M1 只需要：
 
 不在脚手架阶段加入路由库、动画库、状态库、CSS 框架、后端 SDK 或素材生成工具。
 
-## 8. Cloudflare 部署边界
+## 8. M2 三流派与素材边界
+
+- `BattleContent` 提供武器、功法、妖灵、卡牌和六套构筑预设；UI 切换预设时仍通过 `restart` 创建完整新战斗。
+- 敌人使用数组表达，当前内容只放入一个敌人；全体效果不依赖单敌人特例。
+- 符印、灼烧和破甲保存在对应单位状态；剑意、灵契、费用修正和连携冷却保存在战斗状态。
+- 构筑标签直接推导三种连携，不增加解锁服务、装备占位或玩家脚本。
+- 生成式 AI 只在开发期产出静态 PNG。运行时仅加载 `/public/assets/pixel`，不调用模型或外部接口。
+- 卡框、文字和状态标记由 DOM/CSS 绘制；图片不包含文字。素材记录见 [素材流程](asset-pipeline.md)。
+
+## 9. Cloudflare 部署边界
 
 - Worker 是 `wendao.sarainoq.cn` 的源站，Custom Domain 负责 DNS 与证书；不发布 `workers.dev` 或 Preview URL。
 - Vite 构建同时生成前端资源和 Worker 部署配置，Wrangler 一次上传，避免前后端版本漂移。

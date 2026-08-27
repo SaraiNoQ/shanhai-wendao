@@ -8,6 +8,7 @@
 | [技术架构](architecture.md) | 技术栈、模块边界、数据流、存档与确定性 | 技术决策或模块职责改变 |
 | [内容数据规范](content-schema.md) | 内容 ID、字段、效果、单位和校验约定 | 新增字段或内容表达方式 |
 | [原型验收清单](prototype-checklist.md) | 垂直切片里程碑与可验证完成条件 | 验收标准改变或完成项目 |
+| [素材流程](asset-pipeline.md) | AI 生成素材的风格、提示词、后处理和文件记录 | 新增或替换正式素材 |
 | [`AGENTS.md`](../AGENTS.md) | 开发者和 AI 代理的工作规则 | 工作流或来源优先级改变 |
 
 ## 文档规则
@@ -25,6 +26,5 @@
 
 - `save-format.md`：出现第二个 `saveVersion` 或首次存档迁移时。
 - `balance-notes.md`：开始记录真实试玩数据时。
-- `asset-pipeline.md`：开始批量生成和后处理正式素材时。
 - `release-checklist.md`：准备发布可下载版本时。
 - API 文档：出现网络服务时；当前单机原型没有 API。

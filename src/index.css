@@ -1,24 +1,25 @@
 :root {
-  --night: #090d0c;
-  --panel: rgb(16 22 20 / 90%);
-  --paper: #cdbb91;
-  --paper-light: #e4d4ad;
-  --paper-line: #8a7655;
-  --ink: #201a14;
-  --ink-muted: #574a39;
-  --muted: #948b78;
-  --line: rgb(214 191 140 / 18%);
-  --cinnabar: #842c25;
-  --cinnabar-bright: #c14839;
-  --teal-bright: #53c2b3;
+  --night: #050706;
+  --paper: #c4ad79;
+  --paper-light: #e0c994;
+  --ink: #1b160f;
+  --ink-muted: #51422d;
+  --muted: #8c8169;
+  --line: rgb(185 157 99 / 19%);
+  --line-strong: rgb(195 165 102 / 34%);
+  --blood: #76251d;
+  --blood-bright: #bf4936;
+  --ghost: #4fd2bf;
+  --sick-gold: #b39955;
+  --teal-bright: var(--ghost);
   --display: 'STKaiti', 'KaiTi', 'FangSong', 'Noto Serif CJK SC', serif;
   --sans: 'Songti SC', 'Noto Serif CJK SC', serif;
   --mono: 'SFMono-Regular', Consolas, monospace;
   color: var(--paper);
   background:
-    radial-gradient(circle at 13% 10%, rgb(142 48 38 / 11%), transparent 28%),
-    radial-gradient(circle at 87% 92%, rgb(44 137 128 / 9%), transparent 30%),
-    repeating-linear-gradient(93deg, transparent 0 7px, rgb(224 203 160 / 1.4%) 8px),
+    radial-gradient(circle at 13% 10%, rgb(142 48 38 / 8%), transparent 28%),
+    radial-gradient(circle at 87% 92%, rgb(44 137 128 / 7%), transparent 30%),
+    repeating-linear-gradient(0deg, transparent 0 3px, rgb(224 203 160 / 1.4%) 4px),
     var(--night);
   font-family: var(--sans);
   font-synthesis: none;
