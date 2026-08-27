@@ -71,11 +71,25 @@
 5. 运行与改动相关的检查；不要顺手格式化或改写无关文件。
 6. 若玩家可见行为变化，同步更新唯一来源文档和验收项。
 
+## Cloudflare 部署
+
+- 生产环境使用一个 Cloudflare Worker 同时承载 Vite 静态资源和 `/api/*` 后端；不得另建 Pages 项目或重复 API 服务。
+- 生产域名固定为 `https://wendao.sarainoq.cn`。`workers_dev` 和 Preview URLs 保持关闭，除非用户明确批准临时公开地址。
+- 静态资源默认由 Cloudflare 直接缓存和响应；只有 `/api/*` 使用 `run_worker_first` 进入 Worker。
+- Wrangler 配置以根目录 `wrangler.jsonc` 为唯一来源。不得只在 Dashboard 修改域名、路由或绑定，否则下次部署会被配置文件覆盖。
+- 本地开发使用 `pnpm dev`，生产运行时预览使用 `pnpm preview`，完整部署前检查使用 `pnpm cf:check`。
+- 生产部署只能从 `main` 分支的干净工作树执行：先运行 `pnpm check`，再运行 `pnpm deploy`，最后验证首页和 `/api/health`。
+- 首次连接或凭据过期时运行 `pnpm cf:whoami`，仅在未登录时使用 `pnpm exec wrangler login`。
+- 密钥必须通过 `pnpm exec wrangler secret put <NAME>` 或 Cloudflare Secrets Store 设置；不得写入 Git、`.env`、`wrangler.jsonc` 或文档。
+- 新增 KV、D1、R2、Queues、Durable Objects 等绑定前必须先有产品需求、数据模型、迁移与故障处理方案，不预建空资源。
+- `compatibility_date` 只在阅读 Cloudflare 兼容性变更并通过完整测试后更新，不随日常提交自动滚动。
+
 ## 完成标准
 
 - 改动符合 GDD 且没有扩大范围。
 - 相关检查通过；无法运行时明确说明原因。
 - 没有新增无说明依赖、重复规则或不可复现随机性。
 - 文档、内容数据与实现使用相同术语和 ID。
+- 部署相关改动必须通过 Worker API 测试、Wrangler dry-run 和线上健康检查。
 
 安装、开发、测试、检查和构建命令记录在 `README.md`。

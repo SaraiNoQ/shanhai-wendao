@@ -13,6 +13,7 @@
 - **校验：** 使用 Zod 校验外部导入的存档；受信任的内置内容继续使用 TypeScript 静态校验。
 - **交互：** 自动优先级拖拽使用 `@dnd-kit/react`，同时保留永久可用的键盘排序按钮。
 - **测试：** 使用 Vitest 测试纯逻辑和关键流程，与 Vite 复用转换和解析配置。
+- **部署：** 使用 Cloudflare Vite 插件将 SPA 静态资源与 Worker API 原子部署到 `wendao.sarainoq.cn`。
 
 选择 DOM/React 是因为本游戏没有角色移动、物理碰撞和复杂场景渲染，主要工作是卡牌、表格、状态提示和页面切换。游戏引擎不会减少当前工作量。
 
@@ -101,3 +102,11 @@ M1 只需要：
 5. Vitest 覆盖相同种子结果一致与核心战斗分支。
 
 不在脚手架阶段加入路由库、动画库、状态库、CSS 框架、后端 SDK 或素材生成工具。
+
+## 8. Cloudflare 部署边界
+
+- Worker 是 `wendao.sarainoq.cn` 的源站，Custom Domain 负责 DNS 与证书；不发布 `workers.dev` 或 Preview URL。
+- Vite 构建同时生成前端资源和 Worker 部署配置，Wrangler 一次上传，避免前后端版本漂移。
+- 静态资源优先直接响应，只有 `/api/*` 先执行 `worker/index.ts`；SPA 未命中路径回退到 `index.html`。
+- 第一版后端只有无状态 `/api/health`。本地游戏状态继续留在浏览器，不接入 D1、KV 或账号系统。
+- Worker 使用标准 Fetch API，不启用 `nodejs_compat`，保持运行时依赖最小。
