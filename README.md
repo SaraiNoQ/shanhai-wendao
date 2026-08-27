@@ -39,9 +39,9 @@ pnpm deploy
 
 ## 部署
 
-- 目标域名：`https://wendao.sarainoq.cn`
+- 线上地址：[https://wendao.sarainoq.cn](https://wendao.sarainoq.cn)
 - 架构：Cloudflare Worker API + Static Assets
-- 健康检查：`https://wendao.sarainoq.cn/api/health`
+- 健康检查：[https://wendao.sarainoq.cn/api/health](https://wendao.sarainoq.cn/api/health)
 
 首次使用先运行 `pnpm cf:whoami`。部署流程与密钥规则见 [`AGENTS.md`](AGENTS.md#cloudflare-部署)。
 
