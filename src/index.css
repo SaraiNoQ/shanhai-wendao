@@ -1,49 +1,35 @@
 :root {
-  --paper: #d8ccb2;
-  --paper-panel: #cdbf9f;
-  --ink: #211b16;
-  --muted-ink: #5d5143;
-  --bronze: #75664d;
-  --cinnabar: #9b3025;
-
-  font: 18px/1.65 ui-serif, 'Songti SC', 'Noto Serif CJK SC', serif;
-  color: var(--ink);
+  --night: #090d0c;
+  --panel: rgb(16 22 20 / 90%);
+  --paper: #cdbb91;
+  --paper-light: #e4d4ad;
+  --paper-line: #8a7655;
+  --ink: #201a14;
+  --ink-muted: #574a39;
+  --muted: #948b78;
+  --line: rgb(214 191 140 / 18%);
+  --cinnabar: #842c25;
+  --cinnabar-bright: #c14839;
+  --teal-bright: #53c2b3;
+  --display: 'STKaiti', 'KaiTi', 'FangSong', 'Noto Serif CJK SC', serif;
+  --sans: 'Songti SC', 'Noto Serif CJK SC', serif;
+  --mono: 'SFMono-Regular', Consolas, monospace;
+  color: var(--paper);
   background:
-    radial-gradient(circle at 20% 10%, rgb(154 72 48 / 12%), transparent 30%),
-    linear-gradient(rgb(20 17 13 / 86%), rgb(20 17 13 / 94%)),
-    var(--paper);
+    radial-gradient(circle at 13% 10%, rgb(142 48 38 / 11%), transparent 28%),
+    radial-gradient(circle at 87% 92%, rgb(44 137 128 / 9%), transparent 30%),
+    repeating-linear-gradient(93deg, transparent 0 7px, rgb(224 203 160 / 1.4%) 8px),
+    var(--night);
+  font-family: var(--sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   color-scheme: dark;
 }
 
-#root {
-  min-height: 100vh;
-  text-align: center;
-  display: flex;
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-h1 {
-  margin: 8px 0 14px;
-  color: var(--paper);
-  font-size: clamp(3rem, 9vw, 6.5rem);
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  line-height: 1;
-}
-
-h2 {
-  margin: 0;
-  font-size: 1.25rem;
-}
+* { box-sizing: border-box; }
+html { min-width: 320px; min-height: 100%; background: var(--night); }
+body { min-width: 320px; min-height: 100vh; margin: 0; }
+button, input { font: inherit; }
+button:focus-visible { outline: 2px solid var(--teal-bright); outline-offset: 2px; }
+::selection { color: var(--night); background: var(--teal-bright); }
