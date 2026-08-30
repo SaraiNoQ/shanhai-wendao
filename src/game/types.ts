@@ -122,6 +122,7 @@ export interface BuildPreset {
   techniqueId: TechniqueId
   spiritIds: readonly [SpiritId, SpiritId]
   cardIds: readonly [CardId, CardId, CardId, CardId, CardId, CardId]
+  autoplayPriority?: readonly CardId[]
 }
 
 export interface BattleContent {

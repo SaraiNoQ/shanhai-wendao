@@ -112,7 +112,16 @@ M1 只需要：
 - 生成式 AI 只在开发期产出静态 PNG。运行时仅加载 `/public/assets/pixel`，不调用模型或外部接口。
 - 卡框、文字和状态标记由 DOM/CSS 绘制；图片不包含文字。素材记录见 [素材流程](asset-pipeline.md)。
 
-## 9. Cloudflare 部署边界
+## 9. M3 收藏养成与存档边界
+
+- 静态收藏定义保存在 `content`，玩家拥有、等级、资源、配装、词条与重铸候选保存在 `state`；存档只引用稳定 ID，不复制内容对象。
+- 参考 [Antimatter Dimensions](https://github.com/IvarK/AntimatterDimensionsSourceCode) 的单一版本化玩家状态、[Shattered Pixel Dungeon](https://github.com/00-Evan/shattered-pixel-dungeon) 的内容定义与物品状态分离，以及 [Godot 官方 JSON 存档示例](https://github.com/godotengine/godot-demo-projects/blob/master/loading/serialization/save_load_json.gd) 的显式序列化边界。
+- 不采用通用背包插件、对象场景序列化、云存档或额外状态库：当前固定槽位与命名收藏使用普通数据和 React 状态即可完整表达。
+- `saveVersion` 当前为 1。Zod 在导入边界校验版本、类别、拥有关系和配装合法性；错误导入不替换当前状态，损坏的本地主存档在初始化默认进度前保留原始备份。
+- 等级与装备词条在创建战斗前派生为一份 `BattleContent` 快照；战斗运行后仍只读取显式内容与状态，保持相同存档、种子和命令序列可复现。
+- 法宝主动能力与消耗品使用次数属于劫境规则，M3 只完成收藏、升级和配装槽；实际战斗按钮在 M5 接入，避免在没有劫境结算前建立临时充能状态。
+
+## 10. Cloudflare 部署边界
 
 - Worker 是 `wendao.sarainoq.cn` 的源站，Custom Domain 负责 DNS 与证书；不发布 `workers.dev` 或 Preview URL。
 - Vite 构建同时生成前端资源和 Worker 部署配置，Wrangler 一次上传，避免前后端版本漂移。

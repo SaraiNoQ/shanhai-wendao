@@ -15,6 +15,13 @@
 .battle-controls button:hover, .battle-controls button:focus-visible, .battle-controls button.is-active { border-color: var(--ghost); color: var(--ghost); background: #102724; }
 .battle-controls .restart:hover, .battle-controls .restart:focus-visible { border-color: var(--blood-bright); color: var(--blood-bright); background: #29120f; }
 
+.main-nav { display: flex; align-self: stretch; align-items: end; gap: 2px; }
+.main-nav button { min-width: 64px; padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font: 700 .7rem var(--display); cursor: pointer; }
+.main-nav button:hover, .main-nav button:focus-visible, .main-nav button.is-active { border-bottom-color: var(--blood-bright); color: var(--paper-light); background: linear-gradient(transparent, rgb(118 37 29 / 20%)); }
+.resource-bar { display: flex; justify-content: flex-end; gap: 1px; margin: 0 0 7px; }
+.resource-bar > span { display: flex; min-width: 94px; align-items: baseline; justify-content: space-between; gap: 9px; padding: 4px 8px; border: 1px solid var(--line); background: #090d0b; }
+.resource-bar small { color: var(--muted); font-size: .5rem; }.resource-bar strong { color: var(--sick-gold); font: .68rem var(--mono); }
+
 .build-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 7px 0 12px; }
 .build-strip button { position: relative; min-height: 48px; padding: 7px 9px; overflow: hidden; border: 1px solid var(--line); color: var(--paper); background: linear-gradient(rgb(5 9 8 / 76%), rgb(5 9 8 / 92%)), url('/assets/pixel/texture-aged-xuan-paper.png'); text-align: left; cursor: pointer; image-rendering: pixelated; }
 .build-strip button::before { position: absolute; inset: 3px; border: 1px solid rgb(199 169 105 / 9%); content: ''; }
@@ -24,6 +31,21 @@
 .build-strip button:hover, .build-strip button:focus-visible, .build-strip button.is-active { border-color: var(--ghost); background-color: #11211f; box-shadow: inset 0 -3px 0 var(--ghost); }
 .build-strip button:nth-child(2).is-active, .build-strip button:nth-child(4).is-active, .build-strip button:nth-child(5).is-active { border-color: var(--blood-bright); box-shadow: inset 0 -3px 0 var(--blood-bright); }
 .build-strip button:nth-child(3).is-active, .build-strip button:nth-child(6).is-active { border-color: var(--sick-gold); box-shadow: inset 0 -3px 0 var(--sick-gold); }
+
+.paper-page { min-height: calc(100vh - 130px); padding: clamp(18px, 2.2vw, 34px); border: 1px solid var(--line-strong); background: linear-gradient(rgb(9 12 10 / 92%), rgb(5 8 7 / 97%)), url('/assets/pixel/texture-aged-xuan-paper.png'); box-shadow: inset 0 0 0 4px #050706, 0 16px 46px rgb(0 0 0 / 35%); }
+.page-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line-strong); }
+.page-heading small { color: var(--blood-bright); font: .55rem var(--mono); letter-spacing: .18em; }.page-heading h2 { margin: 3px 0 0; color: var(--paper-light); font: 500 1.7rem var(--display); letter-spacing: .13em; }.page-heading p { margin: 0; color: var(--muted); }
+.page-heading button, .detail-actions button, .affix-box button, .save-actions button { padding: 8px 13px; border: 1px solid var(--line-strong); color: var(--paper); background: #111513; cursor: pointer; }
+.page-heading button:hover, .detail-actions button:hover:not(:disabled), .affix-box button:hover:not(:disabled), .save-actions button:hover { border-color: var(--ghost); color: var(--ghost); }.detail-actions button:disabled, .affix-box button:disabled { opacity: .4; cursor: not-allowed; }
+.preset-board { margin: 22px 0; }.preset-board > h3, .loadout-sheet h3, .affix-box h4 { margin: 0 0 12px; color: var(--paper-light); font: 500 1rem var(--display); letter-spacing: .1em; }.preset-board .build-strip { margin: 0; }
+.loadout-grid { display: grid; grid-template-columns: 1.1fr 1fr .8fr; gap: 12px; }
+.loadout-sheet { padding: 18px; border: 1px solid var(--line); background: rgb(4 7 6 / 58%); }
+.loadout-sheet dl, .collection-detail dl { margin: 0; }.loadout-sheet dl > div, .collection-detail dl > div { display: grid; grid-template-columns: 70px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }.loadout-sheet dt, .collection-detail dt { color: var(--muted); font-size: .6rem; }.loadout-sheet dd, .collection-detail dd { margin: 0; color: var(--paper); font-size: .68rem; line-height: 1.65; }
+.loadout-sheet label { display: grid; grid-template-columns: 48px 1fr; align-items: center; gap: 7px 10px; margin: 10px 0; color: var(--muted); font-size: .62rem; }.loadout-sheet label small { grid-column: 2; color: var(--sick-gold); font-size: .5rem; }.loadout-sheet select { min-width: 0; padding: 7px; border: 1px solid var(--line-strong); color: var(--paper); background: #0b100e; }
+.category-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 18px 0; }.category-tabs button { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 8px; border: 1px solid var(--line); color: var(--muted); background: #090d0b; cursor: pointer; }.category-tabs button small { color: var(--sick-gold); font-family: var(--mono); }.category-tabs button:hover, .category-tabs button.is-active { border-color: var(--blood-bright); color: var(--paper-light); background: #1c100d; }
+.codex-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; }.collection-grid { display: grid; align-content: start; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }.collection-card { position: relative; display: grid; min-height: 158px; padding: 10px; grid-template-rows: auto 1fr auto auto; overflow: hidden; border: 1px solid #796747; color: var(--ink); background: linear-gradient(rgb(205 187 142 / 92%), rgb(167 143 97 / 96%)), url('/assets/pixel/texture-aged-xuan-paper.png'); text-align: left; cursor: pointer; box-shadow: 4px 5px 0 rgb(0 0 0 / 30%); }.collection-card::after { position: absolute; inset: 4px; border: 1px solid rgb(42 32 19 / 25%); content: ''; pointer-events: none; }.collection-card > * { position: relative; z-index: 1; }.collection-card > span { color: var(--blood); font-size: .5rem; }.collection-card i { display: grid; place-items: center; color: rgb(31 60 52 / 67%); font: normal 3rem var(--display); }.collection-card strong { font: 700 .82rem var(--display); }.collection-card small { color: var(--ink-muted); font: .52rem var(--mono); }.collection-card.rarity-rare, .collection-card.rarity-legacy { border-color: var(--sick-gold); }.collection-card:hover, .collection-card.is-active { outline: 2px solid var(--ghost); outline-offset: -2px; transform: translateY(-2px); }
+.collection-detail { position: sticky; top: 12px; align-self: start; padding: 22px; border: 1px solid var(--line-strong); background: #0a0e0c; box-shadow: inset 0 0 0 3px #040605; }.rarity-mark { color: var(--blood-bright); font-size: .56rem; letter-spacing: .12em; }.collection-detail h3 { margin: 6px 0 3px; color: var(--paper-light); font: 500 1.65rem var(--display); letter-spacing: .1em; }.detail-level { display: flex; align-items: baseline; gap: 5px; color: var(--muted); }.detail-level strong { color: var(--ghost); font: 1.2rem var(--mono); }.effect-copy { padding: 12px 0; border-block: 1px solid var(--line); color: var(--paper); font-size: .72rem; line-height: 1.7; }.tag-list { display: flex; flex-wrap: wrap; gap: 5px; }.tag-list span { padding: 3px 6px; border: 1px solid var(--sick-gold); color: var(--sick-gold); font-size: .52rem; }.collection-detail blockquote { margin: 15px 0; padding-left: 11px; border-left: 2px solid var(--blood); color: var(--muted); font-size: .64rem; line-height: 1.7; }.detail-actions { display: grid; gap: 6px; margin-top: 14px; }.affix-box { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line); }.affix-box p { color: var(--sick-gold); font-size: .63rem; line-height: 1.6; }.reroll-preview { padding: 10px; border: 1px dashed var(--ghost); }.reroll-preview small { color: var(--ghost); }
+.save-page > section { max-width: 900px; margin: 25px auto 0; }.save-page p { color: var(--muted); }.save-page textarea { width: 100%; min-height: 52vh; resize: vertical; padding: 14px; border: 1px solid var(--line-strong); color: #b9d7ca; background: #050807; font: .63rem/1.5 var(--mono); }.save-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
 
 .battle-layout { display: grid; grid-template-columns: clamp(220px, 18vw, 300px) minmax(650px, 1fr) clamp(280px, 22vw, 370px); gap: 10px; width: 100%; margin: 0 auto; }
 .party-panel, .intel-panel > section, .battle-table { border: 1px solid var(--line-strong); background: linear-gradient(rgb(7 11 10 / 88%), rgb(7 11 10 / 96%)), url('/assets/pixel/texture-aged-xuan-paper.png'); box-shadow: 0 12px 34px rgb(0 0 0 / 38%), inset 0 0 0 3px #070908; image-rendering: pixelated; }
@@ -127,17 +149,21 @@
 @keyframes result-in { from { opacity: 0; } to { opacity: 1; } }
 
 @media (max-width: 1260px) {
+  .topbar { flex-wrap: wrap; }.main-nav { order: 3; width: 100%; justify-content: center; }
   .battle-layout { grid-template-columns: 210px minmax(620px, 1fr); }
   .intel-panel { grid-column: 1 / -1; grid-template-columns: .7fr 1.1fr 1.2fr; }
   .event-list { max-height: 220px; }
+  .loadout-grid { grid-template-columns: 1fr 1fr; }.loadout-grid > section:first-child { grid-column: 1 / -1; }.collection-grid { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
 }
 
 @media (max-width: 900px) {
   .topbar { align-items: flex-start; flex-direction: column; }.battle-controls { justify-content: flex-start; }
+  .main-nav { order: initial; width: 100%; align-items: stretch; }.resource-bar { justify-content: flex-start; overflow-x: auto; }
   .build-strip { grid-template-columns: repeat(3, 1fr); }
   .battle-layout, .intel-panel { grid-template-columns: 1fr; }
   .battle-table { min-height: 720px; }.party-panel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .party-panel > .panel-heading, .target-note { grid-column: 1 / -1; }.spirit-grid { display: contents; }
+  .loadout-grid, .codex-layout { grid-template-columns: 1fr; }.loadout-grid > section:first-child { grid-column: auto; }.category-tabs { grid-template-columns: repeat(4, 1fr); }.collection-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }.collection-detail { position: static; }
 }
 
 @media (prefers-reduced-motion: reduce) {

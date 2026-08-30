@@ -94,7 +94,7 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
     spiritBonds: [0, 0], spiritComboCounts: [0, 0], firstSpiritComboTriggered: [false, false], totalSpiritCombos: 0,
     spiritComboDamageBonus: 0, copyNextSpiritCombo: false, dualSpiritSwordReadyAtMs: 0,
     basicAttackCount: 0, cardsPlayed: 0, swordCardsPlayed: [],
-    deck: shuffled.cards, hand: [], discard: [], autoplay: false, autoplayPriority: [...build.cardIds],
+    deck: shuffled.cards, hand: [], discard: [], autoplay: false, autoplayPriority: [...(build.autoplayPriority ?? build.cardIds)],
   }
   const ignored: BattleEvent[] = []
   while (state.hand.length < MAX_HAND) drawOne(state, ignored)
