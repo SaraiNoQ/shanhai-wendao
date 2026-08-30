@@ -1,6 +1,6 @@
 # 技术架构
 
-> 状态：已采用，用于首个网页垂直切片。
+> 状态：已采用；M4 挂机主线与离线结算已经完成，验收以 `docs/prototype-checklist.md` 为准。
 
 ## 1. 技术基线
 
@@ -117,11 +117,33 @@ M1 只需要：
 - 静态收藏定义保存在 `content`，玩家拥有、等级、资源、配装、词条与重铸候选保存在 `state`；存档只引用稳定 ID，不复制内容对象。
 - 参考 [Antimatter Dimensions](https://github.com/IvarK/AntimatterDimensionsSourceCode) 的单一版本化玩家状态、[Shattered Pixel Dungeon](https://github.com/00-Evan/shattered-pixel-dungeon) 的内容定义与物品状态分离，以及 [Godot 官方 JSON 存档示例](https://github.com/godotengine/godot-demo-projects/blob/master/loading/serialization/save_load_json.gd) 的显式序列化边界。
 - 不采用通用背包插件、对象场景序列化、云存档或额外状态库：当前固定槽位与命名收藏使用普通数据和 React 状态即可完整表达。
-- `saveVersion` 当前为 1。Zod 在导入边界校验版本、类别、拥有关系和配装合法性；错误导入不替换当前状态，损坏的本地主存档在初始化默认进度前保留原始备份。
+- `saveVersion` 当前为 2。Zod 在导入边界校验版本、类别、拥有关系、配装和主线字段；错误导入不替换当前状态，损坏的本地主存档在初始化默认进度前保留原始备份。
 - 等级与装备词条在创建战斗前派生为一份 `BattleContent` 快照；战斗运行后仍只读取显式内容与状态，保持相同存档、种子和命令序列可复现。
 - 法宝主动能力与消耗品使用次数属于劫境规则，M3 只完成收藏、升级和配装槽；实际战斗按钮在 M5 接入，避免在没有劫境结算前建立临时充能状态。
 
-## 10. Cloudflare 部署边界
+## 10. M4 挂机主线与在线/离线同核
+
+- `src/content/stages.ts` 是 30 个 `StageDefinition`、三段地域、波次、推荐标签、固定解锁、奖励和背景键的唯一内容入口；关卡使用 `EnemyId[][]` 表达 1–3 波，不把缩放后的运行时属性写回内容。
+- `src/game/campaign.ts` 负责 `StageSession`、`createStageSession`、`advanceStageSession`、`simulateCampaign`、`summarizeBattle` 和阶段结算。它显式接收存档、内容、经过的逻辑时间和随机种子，不读 DOM、系统时间或全局随机源。
+- 在线自动、手动接管和离线批量模拟都通过 `transitionBattle` 推进同一 `BattleState`；固定逻辑步为 250ms，单波超过 180 秒判定输出不足，离线输入最多取 24 小时。离线只跳过渲染和逐条事件保留，不另写“战力公式”。
+- `settleStage` 只按唯一 `sourceId` 发放首次/重复奖励；`pendingOfflineSettlement` 先保存报告，`claimOfflineSettlement` 校验 `reportId` 后一次性领取，重复领取返回原存档。
+- 失败时停止撞击失败关并刷 `stableStage`；稳定关也失败则逐关回退，第一关失败时暂停。第 30 关胜利只设置 `trialUnlocked` 并暂停，不自动完成筑基。
+
+### 10.1 M4 存档迁移与时间边界
+
+- `PlayerSave.saveVersion` 为 `2`，`campaign` 至少包含 `highestClearedStage`、`stableStage`、`mode`、`campaignSeed`、`battleSequence`、`duplicateDropStreak`、`trialUnlocked`、`lastActiveAtMs`、`settledRewardSourceIds` 和可选 `pendingOfflineSettlement`。
+- `v1 → v2` 迁移保留资源、收藏、等级、配装和词条，只初始化 M4 主线进度；迁移失败、结构损坏或导入校验失败不得覆盖当前有效存档。
+- `lastActiveAtMs` 只在载入、阶段结算、`visibilitychange` 和 `pagehide` 更新。时间倒退按 0 处理，离线时间按 24 小时封顶，不依赖浏览器后台定时器。
+- 24 小时固定步模拟在开发机测得约 4 秒，已达到可感知卡顿阈值；生产端通过 Vite 原生模块 Web Worker 调用同一个 `simulateCampaign`，主线程只接收待领取结算。Worker 不含第二套规则，也不新增依赖。
+
+## 11. M4 主线美术边界
+
+- 开发期使用 Codex 内置 GPT Image 生成 17 件主线样板：2 张地域背景、5 只妖灵、1 个首领、3 个普通敌人、3 个精英和 3 张招牌卡图。完整提示词、参考图、元数据、异常和路径以 [素材流程](asset-pipeline.md) 为唯一来源。
+- 背景为 960×540，角色/敌人为 256×256 透明 PNG，卡图为 320×180；背景与卡图采用 FFmpeg 最近邻缩放和约 32 色量化，透明角色保留 alpha。
+- 图片不得包含文字、数字、卡框、Logo 或水印；名称、数值、描述和状态继续由 DOM/CSS 绘制。没有正式素材的内容使用统一墨影或占位图，不阻塞主线逻辑。
+- AI 只在开发期生成静态文件，运行时不调用模型、联网服务或素材管理后台。千年槐姥素材本阶段只用于图鉴和劫境预告，首领战留在 M5。
+
+## 12. Cloudflare 部署边界
 
 - Worker 是 `wendao.sarainoq.cn` 的源站，Custom Domain 负责 DNS 与证书；不发布 `workers.dev` 或 Preview URL。
 - Vite 构建同时生成前端资源和 Worker 部署配置，Wrangler 一次上传，避免前后端版本漂移。

@@ -75,6 +75,61 @@ type Collectible = {
 - 随机掉落池必须支持固定种子，并声明保底计数属于玩家状态还是单次试炼状态。
 - 所有一次性奖励使用唯一 `sourceId`，重复结算返回空结果而非再次发奖。
 
+### 7.1 M4 主线关卡
+
+```ts
+type StageDefinition = {
+  id: `stage_${string}`
+  stageNumber: number // 1–30，和 id 的三位数字一致
+  name: string
+  regionId: 'mist_road' | 'ruined_waystation' | 'huai_roots'
+  recommendedTags: ('sword' | 'talisman' | 'spirit')[]
+  waves: EnemyId[][] // 每关 1–3 波；每波只保存稳定 EnemyId
+  firstClearReward: { cultivation: number; spiritSand: number }
+  repeatReward: { cultivation: number; spiritSand: number }
+  unlockIds: string[]
+  isRealmGate: boolean
+  backgroundArtKey: string
+}
+```
+
+- 30 个关卡分为雾路、废驿、槐根深处，各 10 关；第 10、20 关为精英节点，第 30 关是劫境入口。
+- 运行时按照 `100 + 8 × (stageNumber - 1)` 计算生元倍率，按照 `100 + 5 × (stageNumber - 1)` 计算攻势倍率，护体额外增加 `2 × floor((stageNumber - 1) / 3)`；最终结果向下取整。
+- 首次奖励为 `20 + 5 × stageNumber` 修为和 `80 + 20 × stageNumber` 灵砂；重复奖励为 `5 + stageNumber` 修为和 `20 + 5 × stageNumber` 灵砂。
+- `EnemyDefinition` 必须包含稳定 `id`、基础 `maxHp`、`attack`、`defense`、`attackIntervalMs`、`behaviorId` 和可选 `artKey`。`behaviorId` 只能使用已实现的少量 TypeScript 行为分支，不建立运行时脚本或卡牌 DSL。
+- 10 种普通敌人和 3 种精英的教学职责固定为：影狸单体攻击、枯藤魅周期护盾、纸面童低生元群体、尸灯蛾施加灼烧、讨封黄仙叠攻势、泥胎傀高护体、铜钱尸死亡强化同伴、夜游伥优先攻击低血妖灵、墓鸦群三段攻击、无首樵夫延迟重击、借命婆反哺治疗、百眼槐枝响应同标签连出、纸甲巡使低血召唤纸面童。
+- 第 30 关的 `isRealmGate` 必须为 `true`；胜利奖励只设置劫境入口，不直接生成筑基或首领战奖励。
+
+### 7.2 M4 存档中的主线引用
+
+主线状态属于 `state`，内容文件不得保存玩家进度；以下字段是存档与内容结算之间的稳定契约：
+
+```ts
+type CampaignProgress = {
+  highestClearedStage: number // 0–30
+  stableStage: number // 0–30
+  mode: 'advance' | 'farm' | 'paused'
+  campaignSeed: number
+  battleSequence: number
+  duplicateDropStreak: number
+  trialUnlocked: boolean
+  lastActiveAtMs: number
+  settledRewardSourceIds: string[]
+  pendingOfflineSettlement?: PendingOfflineSettlement
+}
+```
+
+- `saveVersion` 当前为 `2`；`v1 → v2` 迁移只初始化主线字段，必须保留资源、收藏、等级、配装和词条。
+- `PendingOfflineSettlement` 必须包含唯一 `reportId`、结算时长、战斗次数、推进/失败关卡、资源变化、新收藏、主线结果、奖励来源 ID 和可解释战报。
+- 离线时长先把时间倒退归零，再限制为 24 小时；报告先挂起，确认领取后才能把资源、收藏和 `reportId` 写入当前存档。
+- 失败后模式改为刷取 `stableStage`；稳定关也失败则逐关回退，第 1 关失败时暂停。第 30 关胜利后必须暂停。
+
+### 7.3 素材引用
+
+- `artKey` 是稳定素材键，不在内容对象中内嵌图片或生成提示词；对应文件、尺寸、参考图和后处理记录见 [素材流程](asset-pipeline.md)。
+- M4 使用 17 件主线正式像素素材。图片不得包含名称、数字、卡框、Logo 或水印；未生成素材可以使用统一墨影占位。
+- 背景和卡图使用 960×540 / 320×180，角色、妖灵和敌人使用 256×256 透明 PNG；运行时只加载静态文件，不调用 AI 或外部服务。
+
 ## 8. 内容提交检查
 
 新增或修改内容时确认：

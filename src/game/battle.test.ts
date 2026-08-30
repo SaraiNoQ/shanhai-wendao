@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
 import { createBattle, getEffectiveCardCost, transitionBattle } from './battle'
-import type { BattleState, BuildId, CardId } from './types'
+import type { BattleContent, BattleState, BuildId, CardId, EnemyId } from './types'
 
 function withHand(state: BattleState, hand: CardId[], energy = 10): BattleState {
   return { ...state, hand, deck: [], discard: [], energy }
@@ -9,6 +9,14 @@ function withHand(state: BattleState, hand: CardId[], energy = 10): BattleState 
 
 function play(state: BattleState, cardId: CardId, targetId?: BattleState['spirits'][number]['id']) {
   return transitionBattle({ ...state, hand: [cardId], deck: [], discard: [], energy: 10 }, { type: 'play_card', cardId, targetId }).state
+}
+
+function enemyBattle(...ids: EnemyId[]) {
+  const content: BattleContent = { ...PROTOTYPE_CONTENT, enemies: ids.map((id) => PROTOTYPE_CONTENT.enemyDefinitions[id]) }
+  const state = createBattle(99, content)
+  state.leader.nextActionAtMs = 999_999
+  state.spirits.forEach((spirit) => { spirit.nextActionAtMs = 999_999 })
+  return { state, content }
 }
 
 describe('deterministic M2 battle', () => {
@@ -170,5 +178,56 @@ describe('deterministic M2 battle', () => {
     }
     expect(batched).toEqual(stepped)
     expect(transitionBattle(batched.state, { type: 'restart' }).state).toEqual(createBattle(24))
+  })
+
+  it('implements the common enemy teaching behaviors', () => {
+    const vine = enemyBattle('withered_vine_spirit')
+    vine.state.enemies[0].actionCount = 1
+    vine.state.enemies[0].nextActionAtMs = 250
+    expect(transitionBattle(vine.state, { type: 'advance', elapsedMs: 250 }, vine.content).state.enemies[0].shield).toBeGreaterThan(0)
+
+    const moth = enemyBattle('corpse_lantern_moth')
+    moth.state.enemies[0].nextActionAtMs = 250
+    expect(transitionBattle(moth.state, { type: 'advance', elapsedMs: 250 }, moth.content).state.leader.burnStacks).toBe(1)
+
+    const immortal = enemyBattle('title_seeking_immortal')
+    immortal.state.enemies[0].nextActionAtMs = 250
+    expect(transitionBattle(immortal.state, { type: 'advance', elapsedMs: 250 }, immortal.content).state.enemies[0].attack).toBeGreaterThan(immortal.state.enemies[0].attack)
+
+    const thrall = enemyBattle('night_wandering_thrall')
+    thrall.state.spirits[1].hp = 10
+    thrall.state.enemies[0].nextActionAtMs = 250
+    expect(transitionBattle(thrall.state, { type: 'advance', elapsedMs: 250 }, thrall.content).state.spirits[1].hp).toBeLessThan(10)
+
+    const crows = enemyBattle('grave_crow_flock')
+    crows.state.enemies[0].nextActionAtMs = 250
+    expect(transitionBattle(crows.state, { type: 'advance', elapsedMs: 250 }, crows.content).events.filter((event) => event.type === 'damage' && event.sourceId === 'grave_crow_flock')).toHaveLength(3)
+  })
+
+  it('implements elite reactions, summons, and death effects', () => {
+    const coin = enemyBattle('coin_corpse', 'clay_idol')
+    coin.state.enemies[0].hp = 1
+    const coinResult = transitionBattle(withHand(coin.state, ['guiding_edge']), { type: 'play_card', cardId: 'guiding_edge' }, coin.content)
+    expect(coinResult.state.enemies[1].attackBonusPercent).toBe(15)
+
+    const crone = enemyBattle('borrowed_life_crone')
+    crone.state.enemies[0].hp = 100
+    crone.state.leader.hp = 80
+    const croneResult = transitionBattle(withHand(crone.state, ['life_talisman']), { type: 'play_card', cardId: 'life_talisman' }, crone.content)
+    expect(croneResult.state.enemies[0].hp).toBeGreaterThan(100)
+
+    const branch = enemyBattle('hundred_eyed_branch')
+    branch.state.enemies[0].hp = 9_999
+    let branchState = branch.state
+    let branchEvents = [] as ReturnType<typeof transitionBattle>['events']
+    for (const cardId of ['hidden_edge', 'guiding_edge', 'returning_wind'] as CardId[]) { const result = transitionBattle(withHand(branchState, [cardId]), { type: 'play_card', cardId }, branch.content); branchState = result.state; branchEvents = result.events }
+    expect(branchEvents).toContainEqual(expect.objectContaining({ type: 'enemy_buff', status: 'adaptation_shield' }))
+    expect(branchState.enemies[0].shield).toBeGreaterThan(0)
+
+    const envoy = enemyBattle('paper_armor_envoy')
+    envoy.state.enemies[0].hp = Math.floor(envoy.state.enemies[0].maxHp * 0.6) + 1
+    const envoyResult = transitionBattle(withHand(envoy.state, ['guiding_edge']), { type: 'play_card', cardId: 'guiding_edge' }, envoy.content)
+    expect(envoyResult.events).toContainEqual(expect.objectContaining({ type: 'unit_summoned', unitId: 'paper_child' }))
+    expect(envoyResult.state.enemies).toHaveLength(2)
   })
 })

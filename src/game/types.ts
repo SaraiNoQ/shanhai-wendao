@@ -9,8 +9,22 @@ export type SpiritId =
   | 'lantern_ghost'
   | 'mountain_child'
   | 'dream_tapir'
-export type EnemyId = 'clay_idol'
+export type EnemyId =
+  | 'shadow_civet'
+  | 'withered_vine_spirit'
+  | 'paper_child'
+  | 'corpse_lantern_moth'
+  | 'title_seeking_immortal'
+  | 'clay_idol'
+  | 'coin_corpse'
+  | 'night_wandering_thrall'
+  | 'grave_crow_flock'
+  | 'headless_woodcutter'
+  | 'borrowed_life_crone'
+  | 'hundred_eyed_branch'
+  | 'paper_armor_envoy'
 export type UnitId = 'leader' | SpiritId | EnemyId
+export type EnemyBehaviorId = EnemyId
 
 export type CardId =
   | 'guiding_edge'
@@ -83,7 +97,10 @@ export interface UnitDefinition {
   defense: number
   attackIntervalMs: number
   artKey?: string
+  behaviorId?: EnemyBehaviorId
 }
+
+export interface EnemyDefinition extends UnitDefinition { id: EnemyId; behaviorId: EnemyBehaviorId }
 
 export interface SpiritDefinition extends UnitDefinition {
   id: SpiritId
@@ -128,7 +145,8 @@ export interface BuildPreset {
 export interface BattleContent {
   leader: Omit<UnitDefinition, 'attackIntervalMs' | 'title'>
   spirits: Readonly<Record<SpiritId, SpiritDefinition>>
-  enemies: readonly UnitDefinition[]
+  enemies: readonly EnemyDefinition[]
+  enemyDefinitions: Readonly<Record<EnemyId, EnemyDefinition>>
   weapons: Readonly<Record<WeaponId, WeaponDefinition>>
   techniques: Readonly<Record<TechniqueId, TechniqueDefinition>>
   cards: Readonly<Record<CardId, CardDefinition>>
@@ -145,6 +163,10 @@ export interface UnitState extends UnitDefinition {
   talismanExpiresAtMs: number
   burnStacks: number
   nextBurnAtMs: number
+  actionCount: number
+  attackBonusPercent: number
+  deathEffectTriggered: boolean
+  summonTriggered: boolean
 }
 
 export interface BattleState {
@@ -180,6 +202,8 @@ export interface BattleState {
   basicAttackCount: number
   cardsPlayed: number
   swordCardsPlayed: CardId[]
+  lastPlayerCardTag?: Archetype
+  sameTagStreak: number
   deck: CardId[]
   hand: CardId[]
   discard: CardId[]
@@ -207,6 +231,10 @@ export type BattleEvent = TimedEvent &
     | { type: 'status_changed'; targetId: UnitId | 'battle'; status: 'sword_intent' | 'armor_break' | 'talisman_mark' | 'burn' | 'spirit_bond' | 'energy_discount'; value: number }
     | { type: 'energy_changed'; value: number }
     | { type: 'unit_action'; unitId: UnitId; action: string }
+    | { type: 'unit_summoned'; unitId: EnemyId; sourceId: EnemyId }
+    | { type: 'enemy_buff'; targetId: EnemyId; status: 'attack' | 'adaptation_shield'; value: number }
+    | { type: 'wave_started'; waveNumber: number }
+    | { type: 'battle_timeout' }
     | { type: 'combo_triggered'; comboId: ComboId }
     | { type: 'battle_ended'; result: Exclude<BattleStatus, 'active'> }
     | { type: 'message'; text: string }

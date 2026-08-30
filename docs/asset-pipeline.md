@@ -137,3 +137,55 @@ Color palette: soot black, dead brown, paper gray, ghost-fire cyan, cinnabar red
 Constraints: illustration only; no card frame, no text, no letters, no numbers, no logo, no watermark
 Avoid: cute animals, photorealism, smooth painting, anime gloss, purple neon, clutter
 ```
+
+## M4 主线素材记录
+
+- 生成日期：2026-08-30。
+- 生成方式：Codex 内置 OpenAI `image_gen`；模型标识与随机种子均未提供。
+- 风格参考：背景引用 `bg-huaiyin-road.png`；角色引用 `spirit-paper-bride.png`、`portrait-leader-01.png` 或 `enemy-clay-idol.png`；卡图分别引用三张 M2 招牌卡。
+- 原图目录：`/Users/sarainoq/.codex/generated_images/01a04267-409c-74d2-b38c-d0d3f52f27af/`。
+
+本批提示词共用以下不可省略约束，表格中的“主体”与“构图”逐项替换对应行：
+
+```text
+Use case: stylized-concept
+Asset type: transparent game character portrait / horizontal game card illustration / desktop card-battle environment background
+Input images: style references only; match ancient Chinese horror pixel art, medium pixel clusters, limited palette and crisp dry-ink silhouettes
+Primary request: <表格主体>
+Style/medium: ancient Chinese horror pixel art, hand-crafted 32-color feeling, crisp dry-ink outlines, medium pixel clusters
+Composition/framing: <表格构图>
+Lighting/mood: genuinely eerie supernatural horror; cold ghost-fire cyan, restrained cinnabar red and sparse sickly tarnished-gold highlights
+Color palette: soot black, dead brown, aged paper gray, ghost-fire cyan, cinnabar red, tarnished gold
+Constraints: no text, letters, writing, glyphs, numbers, UI, card border, logo or watermark; character assets require genuine alpha transparency and one subject only
+Avoid: fake checkerboard transparency, photorealism, smooth painting, anime gloss, purple neon, cute mood
+```
+
+| 最终文件 | 主体 | 构图 | 原图 / 例外 |
+|---|---|---|---|
+| `bg-huaiyin-waystation.png` | 雨夜废弃驿站与无人纸铺，纸扎人藏在破门内，远处残庙钟楼隐入浓雾 | 16:9 三层景深，中央保留卡桌区域 | `exec-3b80c0cc-92eb-467b-9506-347ee0a6ed1f.png` |
+| `bg-huaiyin-roots.png` | 巨型槐根挤裂石路并吞没祖祠，根须围住幽暗石门 | 16:9 低压树冠与中央纵深道路 | `exec-c13d59cb-cbcd-47e0-8085-c9f517e2fac7.png` |
+| `spirit-blade-tail-fox.png` | 刃尾狐，长尾如缺口青色剑刃，暗红绳结与伏击姿态 | 低伏三分之四全身，刃尾是主轮廓 | `exec-744c5641-7313-4ae5-881c-7154eda5b493.png` |
+| `spirit-iron-beak-crane.png` | 铁喙鹤，长枪般铁喙、补缀祭羽、铜脚环与破损光轮 | 三分之四全身，长喙与收翼构成三角轮廓 | `exec-19813796-96f8-4d10-b773-a889c6c8dc4c.png` |
+| `spirit-lantern-ghost.png` | 灯笼鬼，破裂红纸灯笼身躯内悬着苍白面具与青火 | 漂浮全身，灯笼轮廓在小卡面清晰 | `exec-9e4ecfd8-5329-4a6c-9ddc-af6c618d2e73.png` |
+| `spirit-mountain-child.png` | 山童，石肤、虎皮肩衣与苔痕守护石板 | 宽阔防御姿态，石板占主要轮廓 | 初稿伪棋盘底；背景提取后使用 `exec-18d02e3a-c21e-48c4-979d-ac61c6556206.png` |
+| `spirit-dream-tapir.png` | 食梦貘，短鼻、墨黑皮毛、骨白纹样和噩梦烟影 | 三分之四全身，短鼻与烟影可辨 | `exec-cb9a332c-c685-4ace-ac28-f28748de333f.png` |
+| `boss-ancient-huai-matriarch.png` | 千年槐姥，老妇面孔自古槐树身浮现，根臂与空白红纸交织 | 对称首领全身，枝冠和根臂形成压迫轮廓 | `exec-e244f364-352f-4b00-a7f6-2cd86936fc33.png` |
+| `enemy-shadow-civet.png` | 影狸，由被盗人影组成的瘦长狸兽，尾部溶成墨迹 | 低伏捕猎姿态 | `exec-2befcccd-b46c-4252-8563-40cac6b056ff.png` |
+| `enemy-paper-child.png` | 纸面童，空白圆纸脸、歪斜竹架与破损丧服 | 僵硬前伸的全身木偶姿态 | `exec-8f222a93-8767-4d22-a2b1-9782f82ea00a.png` |
+| `enemy-headless-woodcutter.png` | 无首樵夫，草蓑腐尸、巨斧、空颈内青火 | 三分之四全身，缺首与巨斧清晰 | 初稿白底；背景提取后使用 `exec-81a7134c-58c4-4d03-897c-141fbd5c857e.png` |
+| `enemy-borrowed-life-crone.png` | 借命婆，佝偻老妇、黑茶碗、红命线与裂纹丧帘 | 佝偻但具压迫感，茶碗与命线可辨 | 初稿伪棋盘底；使用 `exec-b28b4d81-8036-424a-843d-c17ce7d756cb.png` |
+| `enemy-hundred-eyed-branch.png` | 百眼槐枝，根腿行走的断枝，闭合木眼渗出青光 | 放射枝冠与多眼树身 | 初稿白底；使用 `exec-23ce2de5-fcd7-45b7-b094-2f3002d0daea.png` |
+| `enemy-paper-armor-envoy.png` | 纸甲巡使，丧纸竹甲、无面黑罩、钩杖与空白红令 | 直立精英全身，钩杖与纸甲层次可辨 | 初稿白底；使用 `exec-e25d0b54-ebcf-4daa-a63b-70c16aed1a9a.png` |
+| `card-guiding-edge.png` | 引锋式，修士拔出一掌长青刃，第一道剑光切开黑雾 | 16:9 对角拔剑，单一剑光焦点 | `exec-1381a9f9-9924-472d-a169-7d8bfbbe42d2.png` |
+| `card-fire-talisman.png` | 贴火符，完全空白朱砂纸贴上影物胸口并爆出青红鬼火 | 16:9 近距离仪式冲击，空白红纸居中 | `exec-eeadc462-36dc-41d1-b820-c20d923e9712.png` |
+| `card-call-true-name.png` | 唤名，修士摇动铜铃，两只远处妖灵循青色声环回首 | 16:9 前景铃铛、远处恰好两只妖灵 | `exec-fde5a02f-4564-4258-93c0-20a48649534f.png` |
+
+背景提取编辑的最终提示词：
+
+```text
+Use case: background-extraction
+Primary request: remove only the white or checkerboard background and convert it to genuine alpha transparency
+Constraints: preserve the exact character design, pose, proportions, colors and pixel clusters; preserve fine edge pixels; no checkerboard, scenery, shadow panel, text, UI, border, logo or watermark
+```
+
+后处理结果：2 张背景为 960×540、3 张卡图为 320×180，均为 32 色 `pal8`；12 张角色与敌人为 256×256 `rgba`，使用最近邻缩放与透明补边。

@@ -1,7 +1,7 @@
 import { uniformInt } from 'pure-rand/distribution/uniformInt'
 import { xoroshiro128plus, xoroshiro128plusFromState } from 'pure-rand/generator/xoroshiro128plus'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
-import type { Archetype, BattleCommand, BattleContent, BattleEvent, BattleState, BattleTransition, BuildId, CardDefinition, CardId, ComboId, SpiritId, UnitDefinition, UnitId, UnitState } from './types'
+import type { Archetype, BattleCommand, BattleContent, BattleEvent, BattleState, BattleTransition, BuildId, CardDefinition, CardId, ComboId, EnemyDefinition, EnemyId, SpiritId, UnitDefinition, UnitId, UnitState } from './types'
 
 const STEP_MS = 250
 const MAX_HAND = 4
@@ -11,7 +11,7 @@ const MAX_BURN = 6
 type SourceId = UnitId | CardId | 'burn'
 
 function makeUnit(definition: UnitDefinition): UnitState {
-  return { ...definition, hp: definition.maxHp, shield: 0, armorBreak: 0, nextActionAtMs: definition.attackIntervalMs, talismanMarks: 0, talismanExpiresAtMs: 0, burnStacks: 0, nextBurnAtMs: 0 }
+  return { ...definition, hp: definition.maxHp, shield: 0, armorBreak: 0, nextActionAtMs: definition.attackIntervalMs, talismanMarks: 0, talismanExpiresAtMs: 0, burnStacks: 0, nextBurnAtMs: 0, actionCount: 0, attackBonusPercent: 0, deathEffectTriggered: false, summonTriggered: false }
 }
 
 function shuffle(cards: readonly CardId[], rngState: readonly number[]) {
@@ -93,7 +93,7 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
     talismanDiscountCharges: 0, nextEdictDiscount: 0,
     spiritBonds: [0, 0], spiritComboCounts: [0, 0], firstSpiritComboTriggered: [false, false], totalSpiritCombos: 0,
     spiritComboDamageBonus: 0, copyNextSpiritCombo: false, dualSpiritSwordReadyAtMs: 0,
-    basicAttackCount: 0, cardsPlayed: 0, swordCardsPlayed: [],
+    basicAttackCount: 0, cardsPlayed: 0, swordCardsPlayed: [], sameTagStreak: 0,
     deck: shuffled.cards, hand: [], discard: [], autoplay: false, autoplayPriority: [...(build.autoplayPriority ?? build.cardIds)],
   }
   const ignored: BattleEvent[] = []
@@ -129,6 +129,23 @@ function applyIncoming(state: BattleState, sourceId: SourceId, target: UnitState
   target.shield -= shieldAbsorbed
   target.hp = Math.max(0, target.hp - hpDamage)
   events.push({ type: 'damage', sourceId, targetId: target.id, amount: hpDamage, shieldAbsorbed, atMs: state.timeMs })
+  if (target.id === 'paper_armor_envoy' && !target.summonTriggered && target.hp > 0 && target.hp * 100 <= target.maxHp * 60) {
+    target.summonTriggered = true
+    const summoned = makeUnit(PROTOTYPE_CONTENT.enemyDefinitions.paper_child)
+    summoned.nextActionAtMs += state.timeMs
+    state.enemies.push(summoned)
+    state.enemies.filter((enemy) => enemy.hp > 0 && enemy !== target).forEach((enemy) => { enemy.shield += 24 })
+    events.push({ type: 'unit_summoned', unitId: 'paper_child', sourceId: 'paper_armor_envoy', atMs: state.timeMs })
+  }
+  if (target.id === 'coin_corpse' && target.hp <= 0 && !target.deathEffectTriggered) {
+    target.deathEffectTriggered = true
+    state.enemies.filter((enemy) => enemy.hp > 0).forEach((enemy) => {
+      const gained = Math.max(1, Math.floor(enemy.attack * 0.15))
+      enemy.attack += gained
+      enemy.attackBonusPercent += 15
+      events.push({ type: 'enemy_buff', targetId: enemy.id as EnemyId, status: 'attack', value: enemy.attack, atMs: state.timeMs })
+    })
+  }
   finishIfNeeded(state, events)
 }
 
@@ -152,6 +169,12 @@ function heal(state: BattleState, sourceId: UnitId | CardId, target: UnitState, 
   const restored = Math.min(amount, target.maxHp - target.hp)
   target.hp += restored
   events.push({ type: 'heal', sourceId, targetId: target.id, amount: restored, atMs: state.timeMs })
+  const crone = state.enemies.find((enemy) => enemy.id === 'borrowed_life_crone' && enemy.hp > 0)
+  if (crone && restored > 0 && sourceId !== crone.id) {
+    const stolen = Math.min(Math.floor(restored * 0.5), crone.maxHp - crone.hp)
+    crone.hp += stolen
+    if (stolen) events.push({ type: 'heal', sourceId: crone.id, targetId: crone.id, amount: stolen, atMs: state.timeMs })
+  }
 }
 
 function gainEnergy(state: BattleState, amount: number, events: BattleEvent[]) {
@@ -383,6 +406,17 @@ function playCard(state: BattleState, cardId: CardId, targetId: UnitId | undefin
   events.push({ type: 'card_played', cardId, automatic, targetId: resolvedTarget, atMs: state.timeMs })
   applyCardEffect(state, card, resolvedTarget, events)
 
+  const tag = card.tags[0]
+  state.sameTagStreak = state.lastPlayerCardTag === tag ? state.sameTagStreak + 1 : 1
+  state.lastPlayerCardTag = tag
+  if (state.sameTagStreak >= 3) {
+    state.sameTagStreak = 0
+    state.enemies.filter((enemy) => enemy.id === 'hundred_eyed_branch' && enemy.hp > 0).forEach((enemy) => {
+      enemy.shield += 25
+      events.push({ type: 'enemy_buff', targetId: enemy.id as EnemyId, status: 'adaptation_shield', value: enemy.shield, atMs: state.timeMs })
+    })
+  }
+
   if (card.kind === '剑式') {
     if (!state.swordCardsPlayed.includes(cardId)) state.swordCardsPlayed.push(cardId)
     afterSwordHit(state, events)
@@ -414,8 +448,38 @@ function autoAction(state: BattleState, unit: UnitState, events: BattleEvent[]) 
     if (state.weaponId === 'azure_wind_sword' && state.basicAttackCount % 4 === 0) gainSwordIntent(state, 1, events)
     if (state.weaponId === 'cinnabar_brush' && enemy.talismanMarks > 0) enemy.talismanExpiresAtMs = Math.min(enemy.talismanExpiresAtMs + 1_000, state.timeMs + 12_000)
   } else if (state.enemies.some((target) => target === unit)) {
-    events.push({ type: 'unit_action', unitId: unit.id, action: '泥拳', atMs: state.timeMs })
-    dealDamage(state, unit.id, unit.attack, state.leader, 100, events)
+    unit.actionCount += 1
+    events.push({ type: 'unit_action', unitId: unit.id, action: unit.title, atMs: state.timeMs })
+    switch (unit.behaviorId) {
+      case 'withered_vine_spirit':
+        dealDamage(state, unit.id, unit.attack, state.leader, 70, events)
+        if (unit.actionCount % 2 === 0) addShield(state, unit.id, unit, Math.floor(unit.maxHp * 0.18), events)
+        break
+      case 'corpse_lantern_moth': {
+        dealDamage(state, unit.id, unit.attack, state.leader, 70, events)
+        const ally = [state.leader, ...state.spirits].filter((target) => target.hp > 0).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0]
+        if (ally) addBurn(state, ally, 1, events)
+        break
+      }
+      case 'title_seeking_immortal': {
+        dealDamage(state, unit.id, unit.attack, state.leader, 90, events)
+        if (unit.actionCount <= 5) {
+          const gained = Math.max(1, Math.floor(unit.attack * 0.1))
+          unit.attack += gained
+          unit.attackBonusPercent += 10
+          events.push({ type: 'enemy_buff', targetId: unit.id as EnemyId, status: 'attack', value: unit.attack, atMs: state.timeMs })
+        }
+        break
+      }
+      case 'night_wandering_thrall': {
+        const target = state.spirits.filter((spirit) => spirit.hp > 0).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0] ?? state.leader
+        dealDamage(state, unit.id, unit.attack, target, 110, events)
+        break
+      }
+      case 'grave_crow_flock': for (let hit = 0; hit < 3; hit += 1) dealDamage(state, unit.id, unit.attack, state.leader, 45, events); break
+      case 'headless_woodcutter': dealDamage(state, unit.id, unit.attack, state.leader, 220, events); break
+      default: dealDamage(state, unit.id, unit.attack, state.leader, 100, events)
+    }
   } else if (enemy) {
     events.push({ type: 'unit_action', unitId: unit.id, action: unit.title, atMs: state.timeMs })
     switch (unit.id as SpiritId) {
@@ -445,13 +509,13 @@ function advanceStep(state: BattleState, content: BattleContent, events: BattleE
     if (state.energyProgressMs >= 1_000) { state.energyProgressMs -= 1_000; gainEnergy(state, 1, events) }
   } else state.energyProgressMs = 0
 
-  for (const enemy of state.enemies) {
-    if (enemy.talismanMarks > 0 && state.timeMs >= enemy.talismanExpiresAtMs) {
-      enemy.talismanMarks = 0
-      enemy.talismanExpiresAtMs = 0
-      events.push({ type: 'status_changed', targetId: enemy.id, status: 'talisman_mark', value: 0, atMs: state.timeMs })
+  for (const unit of [state.leader, ...state.spirits, ...state.enemies]) {
+    if (unit.talismanMarks > 0 && state.timeMs >= unit.talismanExpiresAtMs) {
+      unit.talismanMarks = 0
+      unit.talismanExpiresAtMs = 0
+      events.push({ type: 'status_changed', targetId: unit.id, status: 'talisman_mark', value: 0, atMs: state.timeMs })
     }
-    if (enemy.burnStacks > 0 && state.timeMs >= enemy.nextBurnAtMs) tickBurn(state, enemy, events)
+    if (unit.burnStacks > 0 && state.timeMs >= unit.nextBurnAtMs) tickBurn(state, unit, events)
   }
 
   for (const actor of [state.leader, ...state.spirits, ...state.enemies]) {
@@ -486,4 +550,12 @@ export function transitionBattle(current: BattleState, command: BattleCommand, c
     case 'reorder_priority': if (validPriority(command.cardIds, state, content)) state.autoplayPriority = [...command.cardIds]; break
   }
   return { state, events }
+}
+
+export function startNextWave(current: BattleState, enemies: readonly EnemyDefinition[], waveNumber: number): BattleTransition {
+  const state = cloneState(current)
+  state.status = 'active'
+  state.enemies = enemies.map(makeUnit)
+  state.enemies.forEach((enemy) => { enemy.nextActionAtMs += state.timeMs })
+  return { state, events: [{ type: 'wave_started', waveNumber, atMs: state.timeMs }] }
 }
