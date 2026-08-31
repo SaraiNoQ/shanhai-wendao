@@ -94,7 +94,7 @@ function mergeReports(total: BattleReport | undefined, next: BattleReport): Batt
   mergeMap(total.actionsByUnit, next.actionsByUnit)
   mergeMap(total.comboCounts as Record<string, number>, next.comboCounts as Record<string, number>)
   total.durationMs += next.durationMs
-  total.result = next.result
+  total.result = total.result === 'defeat' || next.result === 'defeat' ? 'defeat' : 'victory'
   total.failureReason ??= next.failureReason
   return total
 }

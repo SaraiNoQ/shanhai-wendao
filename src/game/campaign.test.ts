@@ -171,6 +171,14 @@ describe('M4 reports and offline settlement', () => {
     expect(report.comboCounts).toEqual({ flying_sword_seal: 1 })
   })
 
+  it('keeps an aggregate report marked as defeat when a later farm battle wins', () => {
+    const base = createPlayerSave(0)
+    const save = { ...base, campaign: { ...base.campaign, highestClearedStage: 16, stableStage: 16, mode: 'advance' as const } }
+    const pending = simulateCampaign(save, 60_000, 60_000)
+    expect(pending?.failedStage).toBe(17)
+    expect(pending?.contribution.result).toBe('defeat')
+  })
+
   it('caps offline input at 24 hours and keeps short simulations deterministic', () => {
     expect(clampOfflineDuration(OFFLINE_LIMIT_MS + LOGIC_STEP_MS)).toBe(OFFLINE_LIMIT_MS)
     expect(clampOfflineDuration(-1)).toBe(0)
