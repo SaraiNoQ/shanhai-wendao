@@ -161,7 +161,7 @@ export function CharacterPage({ save, onSaveChange, readOnly = false, onEnterBat
   }
 
   return <main className="paper-page character-page">
-    <header className="page-heading character-heading"><div><small>CHARACTER · LOADOUT · INVENTORY</small><h2>角色与行囊</h2></div><div className="character-heading-actions"><span className="build-badge">{summary.buildName}</span><button type="button" disabled={readOnly} onClick={onEnterBattle}>{readOnly ? '劫境进行中' : '携此阵试法'}</button></div></header>
+    <header className="page-heading character-heading"><div><small>CHARACTER · LOADOUT · INVENTORY</small><h2>角色与行囊</h2></div><div className="character-heading-actions"><span className="build-badge">{summary.buildName}</span><button type="button" disabled={readOnly} onClick={() => onEnterBattle?.()}>{readOnly ? '劫境进行中' : '携此阵试法'}</button></div></header>
     <p className="character-guide" role="note"><span aria-hidden="true">✦</span>{readOnly ? '劫境进行中，角色页只读；完成或撤退后可调整配装。' : '点击物品查看精确规则；拖动到中央槽位装备，键盘用户可用详情区的装备按钮。'}<button type="button" aria-label="关闭操作提示" onClick={(event) => { event.currentTarget.parentElement?.remove() }}>×</button></p>
     <DragDropProvider onDragEnd={handleDragEnd}>
       <div className="character-layout">
