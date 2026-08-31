@@ -115,11 +115,18 @@ type CampaignProgress = {
   trialUnlocked: boolean
   lastActiveAtMs: number
   settledRewardSourceIds: string[]
+  lastFailure?: {
+    stageNumber: number // 1–30
+    fallbackStage: number // 0–30
+    reason: string
+    battleSequence: number
+  }
   pendingOfflineSettlement?: PendingOfflineSettlement
 }
 ```
 
-- `saveVersion` 当前为 `2`；`v1 → v2` 迁移只初始化主线字段，必须保留资源、收藏、等级、配装和词条。
+- `saveVersion` 当前为 `3`；`v1 → v3` 迁移只初始化主线字段，`v2 → v3` 保留已有主线进度；两种迁移都必须保留资源、收藏、等级、配装和词条。
+- `lastFailure` 持久记录最近一次卡关、失败原因、稳定回退关和结算后的 `battleSequence`；稳定刷取胜利不覆盖提醒，成功越过失败关后清除。
 - `PendingOfflineSettlement` 必须包含唯一 `reportId`、结算时长、战斗次数、推进/失败关卡、资源变化、新收藏、主线结果、奖励来源 ID 和可解释战报。
 - 离线时长先把时间倒退归零，再限制为 24 小时；报告先挂起，确认领取后才能把资源、收藏和 `reportId` 写入当前存档。
 - 失败后模式改为刷取 `stableStage`；稳定关也失败则逐关回退，第 1 关失败时暂停。第 30 关胜利后必须暂停。

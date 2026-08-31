@@ -62,7 +62,7 @@ function wavesFor(stageNumber: number) {
     const candidate = pool[(stageNumber + offset) % pool.length]
     return candidate === primary ? pool[(stageNumber + offset + 1) % pool.length] : candidate
   }
-  if (stageNumber <= 20) return [[other(0)], stageNumber % 5 === 0 ? [primary] : [primary, other(2)]]
+  if (stageNumber <= 20) return [[other(0)], stageNumber % 5 === 0 || stageNumber === 4 || stageNumber === 6 ? [primary] : [primary, other(2)]]
   if (stageNumber === 30) return [[other(0), other(2)], [other(3), other(5)], [primary]]
   return [[other(0)], [other(1), other(3)], [primary, other(5)]]
 }

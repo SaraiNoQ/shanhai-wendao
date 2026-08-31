@@ -37,6 +37,8 @@ describe('M4 campaign content and sessions', () => {
     expect(STAGES[3].waves).toHaveLength(2)
     expect(STAGES[20].waves).toHaveLength(3)
     expect(STAGES[29].isRealmGate).toBe(true)
+    expect(STAGES[3].waves[1]).toHaveLength(1)
+    expect(STAGES[5].waves[1]).toHaveLength(1)
     for (const stage of STAGES) {
       expect(stage.waves.length).toBeGreaterThanOrEqual(1)
       expect(stage.waves.length).toBeLessThanOrEqual(3)
@@ -75,16 +77,58 @@ describe('M4 campaign content and sessions', () => {
     const base = createPlayerSave(0)
     const save = {
       ...base,
-      campaign: { ...base.campaign, highestClearedStage: 4, stableStage: 4, mode: 'advance' as const },
+      campaign: { ...base.campaign, highestClearedStage: 4, stableStage: 4, mode: 'advance' as const, battleSequence: 7 },
     }
     const afterAdvanceFailure = settleStage(save, withStatus(createStageSession(save, 5), 'defeat'))
     expect(afterAdvanceFailure.campaign.stableStage).toBe(4)
     expect(afterAdvanceFailure.campaign.mode).toBe('farm')
+    expect(afterAdvanceFailure.campaign.lastFailure).toEqual({ stageNumber: 5, fallbackStage: 4, reason: '主将生元耗尽。', battleSequence: 8 })
     expect(nextCampaignStage(afterAdvanceFailure)).toBe(4)
 
     const afterFarmFailure = settleStage(afterAdvanceFailure, withStatus(createStageSession(afterAdvanceFailure, 4), 'defeat'))
     expect(afterFarmFailure.campaign.stableStage).toBe(3)
     expect(afterFarmFailure.campaign.mode).toBe('farm')
+    expect(afterFarmFailure.campaign.lastFailure).toEqual({ stageNumber: 4, fallbackStage: 3, reason: '主将生元耗尽。', battleSequence: 9 })
+  })
+
+  it('keeps the failure reminder while farming a stable stage', () => {
+    const base = createPlayerSave(0)
+    const save = {
+      ...base,
+      campaign: {
+        ...base.campaign,
+        highestClearedStage: 4,
+        stableStage: 4,
+        mode: 'farm' as const,
+        lastFailure: { stageNumber: 5, fallbackStage: 4, reason: '输出不足，单波超过 180 秒。', battleSequence: 3 },
+      },
+    }
+    const settled = settleStage(save, withStatus(createStageSession(save, 4), 'victory'))
+    expect(settled.campaign.lastFailure).toEqual(save.campaign.lastFailure)
+  })
+
+  it('clears the failure reminder after successfully passing the blocked stage', () => {
+    const base = createPlayerSave(0)
+    const save = {
+      ...base,
+      campaign: {
+        ...base.campaign,
+        highestClearedStage: 4,
+        stableStage: 4,
+        mode: 'advance' as const,
+        lastFailure: { stageNumber: 5, fallbackStage: 4, reason: '主将生元耗尽。', battleSequence: 3 },
+      },
+    }
+    const settled = settleStage(save, withStatus(createStageSession(save, 5), 'victory'))
+    expect(settled.campaign.lastFailure).toBeUndefined()
+  })
+
+  it('pauses after the first-stage failure while retaining its fallback', () => {
+    const save = createPlayerSave(0)
+    const settled = settleStage(save, withStatus(createStageSession(save, 1), 'defeat'))
+    expect(settled.campaign.stableStage).toBe(0)
+    expect(settled.campaign.mode).toBe('paused')
+    expect(settled.campaign.lastFailure).toEqual({ stageNumber: 1, fallbackStage: 0, reason: '主将生元耗尽。', battleSequence: 1 })
   })
 
   it('stops at stage 30 while unlocking, but not completing, the trial', () => {
@@ -153,5 +197,16 @@ describe('M4 reports and offline settlement', () => {
       spiritEssence: save.resources.spiritEssence + settlement.resourceDelta.spiritEssence,
       artifactEssence: save.resources.artifactEssence + settlement.resourceDelta.artifactEssence,
     })
+  })
+
+  it('carries the failure reminder through an offline settlement claim', () => {
+    const save = createPlayerSave(0)
+    const pending = simulateCampaign(save, 20_000, 20_000)
+    expect(pending).toBeDefined()
+    if (!pending) return
+    const reminder = { stageNumber: 5, fallbackStage: 4, reason: '主将生元耗尽。', battleSequence: 6 }
+    pending.result.lastFailure = reminder
+    const claimed = claimOfflineSettlement(attachOfflineSettlement(save, pending, 1_000), 1_001)
+    expect(claimed.campaign.lastFailure).toEqual(reminder)
   })
 })

@@ -224,7 +224,11 @@ function detonateMarks(state: BattleState, sourceId: CardId, target: UnitState, 
   return consumed
 }
 
-function lowestBondIndex(state: BattleState) { return state.spiritBonds[0] <= state.spiritBonds[1] ? 0 : 1 }
+function lowestBondIndex(state: BattleState) {
+  const firstAlive = state.spirits.findIndex((spirit) => spirit.hp > 0)
+  if (firstAlive < 0) return 0
+  return state.spirits.reduce((lowest, spirit, index) => spirit.hp > 0 && state.spiritBonds[index] < state.spiritBonds[lowest] ? index : lowest, firstAlive)
+}
 
 function spiritComboBonus(state: BattleState, index: number, events: BattleEvent[]) {
   const spirit = state.spirits[index]
@@ -297,10 +301,28 @@ export function getEffectiveCardCost(state: BattleState, card: CardDefinition) {
   return Math.max(0, card.cost - discount)
 }
 
-function validTarget(state: BattleState, card: CardDefinition, targetId: UnitId | undefined, automatic: boolean) {
-  if (card.targetRule !== 'chosen_spirit') return true
-  if (automatic && !targetId) return true
-  return state.spirits.some((spirit) => spirit.id === targetId && spirit.hp > 0)
+export type CardAvailabilityReason = 'battle_ended' | 'not_in_hand' | 'insufficient_energy' | 'target_required' | 'invalid_target' | 'target_dead' | 'no_living_spirit'
+
+export interface CardAvailability {
+  available: boolean
+  cost: number
+  targetId?: UnitId
+  reason?: CardAvailabilityReason
+}
+
+export function getCardAvailability(state: BattleState, card: CardDefinition, targetId?: UnitId, automatic = false): CardAvailability {
+  const cost = getEffectiveCardCost(state, card)
+  if (state.status !== 'active') return { available: false, cost, reason: 'battle_ended' }
+  if (!state.hand.includes(card.id)) return { available: false, cost, reason: 'not_in_hand' }
+  if (state.energy < cost) return { available: false, cost, reason: 'insufficient_energy' }
+
+  const resolvedTarget = targetId ?? (automatic && card.targetRule === 'chosen_spirit' && state.spirits.some((spirit) => spirit.hp > 0) ? state.spirits[lowestBondIndex(state)].id : undefined)
+  if (card.targetRule !== 'chosen_spirit') return { available: true, cost, targetId: resolvedTarget }
+  if (!resolvedTarget) return { available: false, cost, reason: state.spirits.some((spirit) => spirit.hp > 0) ? 'target_required' : 'no_living_spirit' }
+  const target = state.spirits.find((spirit) => spirit.id === resolvedTarget)
+  if (!target) return { available: false, cost, reason: 'invalid_target' }
+  if (target.hp <= 0) return { available: false, cost, reason: 'target_dead' }
+  return { available: true, cost, targetId: resolvedTarget }
 }
 
 function applyCardEffect(state: BattleState, card: CardDefinition, targetId: UnitId | undefined, events: BattleEvent[]) {
@@ -394,9 +416,10 @@ function consumeDiscounts(state: BattleState, card: CardDefinition) {
 function playCard(state: BattleState, cardId: CardId, targetId: UnitId | undefined, content: BattleContent, events: BattleEvent[], automatic: boolean) {
   const handIndex = state.hand.indexOf(cardId)
   const card = content.cards[cardId]
-  const resolvedTarget = targetId ?? (automatic && card.targetRule === 'chosen_spirit' ? state.spirits[lowestBondIndex(state)].id : undefined)
-  const cost = getEffectiveCardCost(state, card)
-  if (state.status !== 'active' || handIndex < 0 || state.energy < cost || !validTarget(state, card, resolvedTarget, automatic)) return false
+  const availability = getCardAvailability(state, card, targetId, automatic)
+  if (handIndex < 0 || !availability.available) return false
+  const resolvedTarget = availability.targetId
+  const cost = availability.cost
   state.energy -= cost
   consumeDiscounts(state, card)
   state.hand.splice(handIndex, 1)
@@ -524,7 +547,7 @@ function advanceStep(state: BattleState, content: BattleContent, events: BattleE
   }
 
   if (state.autoplay && state.status === 'active') {
-    const cardId = state.autoplayPriority.find((id) => state.hand.includes(id) && getEffectiveCardCost(state, content.cards[id]) <= state.energy)
+    const cardId = state.autoplayPriority.find((id) => getCardAvailability(state, content.cards[id], undefined, true).available)
     if (cardId) playCard(state, cardId, undefined, content, events, true)
   }
 }

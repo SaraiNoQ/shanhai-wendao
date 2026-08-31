@@ -9,9 +9,13 @@ import './TravelPage.css'
 export interface TravelPageProps {
   save: PlayerSave
   session?: StageSession
+  offlineBusy: boolean
+  offlineError?: string
   onSetMode: (mode: CampaignProgress['mode']) => void
   onEnterBattle: (stageNumber: number) => void
   onClaimOffline: () => void
+  onOpenLoadout: () => void
+  onRetryOffline: () => void
 }
 
 const REGIONS: ReadonlyArray<{ id: RegionId; name: string; subtitle: string; start: number; end: number }> = [
@@ -100,7 +104,7 @@ function LatestReport({ report }: { report?: BattleReport }) {
   </section>
 }
 
-export function TravelPage({ save, session, onSetMode, onEnterBattle, onClaimOffline }: TravelPageProps) {
+export function TravelPage({ save, session, offlineBusy, offlineError, onSetMode, onEnterBattle, onClaimOffline, onOpenLoadout, onRetryOffline }: TravelPageProps) {
   const { campaign } = save
   const activeStage = session?.stageNumber ?? (campaign.mode === 'farm' ? Math.max(1, campaign.stableStage) : Math.min(30, campaign.highestClearedStage + 1))
   const [selectedStageNumber, setSelectedStageNumber] = useState<number>()
@@ -116,19 +120,28 @@ export function TravelPage({ save, session, onSetMode, onEnterBattle, onClaimOff
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [offlineOpen, pendingReportId])
 
-  const selectedStage = getStage(session?.stageNumber ?? selectedStageNumber ?? activeStage)
+  const selectedStage = getStage(selectedStageNumber ?? session?.stageNumber ?? activeStage)
   const currentStage = getStage(activeStage)
-  const currentWaveIndex = session?.stageNumber === currentStage.stageNumber ? Math.min(session.waveIndex, currentStage.waves.length - 1) : 0
-  const currentWave = currentStage.waves[currentWaveIndex]
-  const battleEnemies = session?.stageNumber === currentStage.stageNumber ? session.battle.enemies : []
+  const selectedIsCurrent = selectedStage.stageNumber === currentStage.stageNumber
+  const currentWaveIndex = selectedIsCurrent && session ? Math.min(session.waveIndex, currentStage.waves.length - 1) : 0
+  const currentWave = selectedStage.waves[selectedIsCurrent ? currentWaveIndex : 0]
+  const battleEnemies = selectedIsCurrent && session ? session.battle.enemies : []
   const mapStyle = { '--travel-map-image': `url('/assets/pixel/${BACKGROUND_FILES[selectedStage.backgroundArtKey] ?? BACKGROUND_FILES.bg_huaiyin_road}')` } as CSSProperties
-  const sessionIsCurrent = session?.stageNumber === currentStage.stageNumber
+  const sessionIsCurrent = selectedIsCurrent && session?.stageNumber === currentStage.stageNumber
+  const blocked = campaign.lastFailure
+  const controlsLocked = offlineBusy || Boolean(pending)
+  const battleWarning = sessionIsCurrent && session && session.battle.timeMs >= 60_000 ? session.battle.timeMs >= 150_000 ? '输出不足，再过 30 秒将判定本波失败。' : '久战未决，建议接管斗法或调整构筑。' : undefined
 
   return <main className="travel-page" aria-labelledby="travel-page-title">
     <header className="travel-heading">
       <div><span className="travel-kicker">THE WANDERING REGISTER · 槐阴古道</span><h1 id="travel-page-title">游历</h1><p>沿着旧驿留下的墨线前行，修为与传闻会替你记住每一步。</p></div>
-      <div className="travel-heading-stats" aria-label="游历进度"><div><small>最高通关</small><strong>{stageLabel(campaign.highestClearedStage)} <i>/ 30</i></strong></div><div><small>稳定关</small><strong>{campaign.stableStage ? stageLabel(campaign.stableStage) : '—'}</strong></div><span className={`travel-mode mode-${campaign.mode}`}>{MODE_NAMES[campaign.mode]}</span></div>
+      <div className="travel-heading-stats" aria-label="游历进度"><div><small>最高通关</small><strong>{stageLabel(campaign.highestClearedStage)} <i>/ 30</i></strong></div><div><small>稳定关</small><strong>{campaign.stableStage ? stageLabel(campaign.stableStage) : '—'}</strong></div><span className={`travel-mode mode-${campaign.mode}`}>{pending ? '等待领取' : offlineBusy ? '正在推演' : MODE_NAMES[campaign.mode]}</span></div>
     </header>
+
+    {blocked && <section className="travel-blocker" role="alert"><div><strong>推进受阻：第 {stageLabel(blocked.stageNumber)} 关未能通过</strong><p>{blocked.reason} 已转至第 {blocked.fallbackStage ? stageLabel(blocked.fallbackStage) : '01'} 关稳定刷取。</p></div><div className="travel-blocker-actions"><button type="button" onClick={onOpenLoadout}>调整构筑</button><button type="button" onClick={() => onEnterBattle(blocked.stageNumber)}>重新挑战</button></div></section>}
+    {offlineBusy && <p className="travel-state-banner" role="status" aria-live="polite">正在推演离线游历，推进与模式切换暂时锁定……</p>}
+    {offlineError && <p className="travel-state-banner is-error" role="alert">{offlineError} <button type="button" onClick={onRetryOffline}>我知道了</button></p>}
+    {pending && <p className="travel-state-banner is-pending" role="status">离线报告待领取，领取前游历暂停。可先查看报告，再确认结算。</p>}
 
     <div className="travel-overview">
       <section className="travel-map-shell" style={mapStyle} aria-labelledby="travel-map-title">
@@ -141,18 +154,18 @@ export function TravelPage({ save, session, onSetMode, onEnterBattle, onClaimOff
             <div className="travel-node-grid">
               {STAGES.filter((stage) => stage.regionId === region.id).map((stage) => {
                 const status = stageStatus(stage, campaign.highestClearedStage, campaign.stableStage, activeStage)
-                return <button key={stage.id} type="button" disabled={!status.reachable} aria-current={status.current ? 'step' : undefined} aria-label={`${stageLabel(stage.stageNumber)} ${stage.name}${status.cleared ? '，已通关' : status.current ? '，当前关卡' : status.reachable ? '，可挑战' : '，尚未解锁'}`} className={`travel-node ${status.cleared ? 'is-cleared' : ''} ${status.current ? 'is-current' : ''} ${status.stable ? 'is-stable' : ''} ${stage.isRealmGate ? 'is-gate' : ''} ${!status.reachable ? 'is-locked' : ''}`} onClick={() => setSelectedStageNumber(stage.stageNumber)}><span className="travel-node-number">{stageLabel(stage.stageNumber)}</span><span className="travel-node-glyph" aria-hidden="true">{stage.isRealmGate ? '劫' : status.cleared ? '✓' : '·'}</span><strong>{stage.name}</strong>{status.current && <em>此刻</em>}</button>
+                return <button key={stage.id} type="button" disabled={!status.reachable} aria-current={status.current ? 'step' : undefined} aria-pressed={selectedStage.stageNumber === stage.stageNumber} aria-label={`${stageLabel(stage.stageNumber)} ${stage.name}${status.cleared ? '，已通关' : status.current ? '，当前关卡' : status.reachable ? '，可挑战' : '，尚未解锁'}`} className={`travel-node ${status.cleared ? 'is-cleared' : ''} ${status.current ? 'is-current' : ''} ${status.stable ? 'is-stable' : ''} ${stage.isRealmGate ? 'is-gate' : ''} ${selectedStage.stageNumber === stage.stageNumber ? 'is-selected' : ''} ${!status.reachable ? 'is-locked' : ''}`} onClick={() => setSelectedStageNumber(stage.stageNumber)}><span className="travel-node-number">{stageLabel(stage.stageNumber)}</span><span className="travel-node-glyph" aria-hidden="true">{stage.isRealmGate ? '劫' : status.cleared ? '✓' : '·'}</span><strong>{stage.name}</strong>{status.current && <em>此刻</em>}</button>
               })}
             </div>
           </section>)}
         </div>
-        <footer className="travel-map-foot"><span>当前注视：{stageLabel(selectedStage.stageNumber)} · {selectedStage.name}</span><span>{selectedStage.recommendedTags.map((tag) => tag === 'sword' ? '剑意' : tag === 'talisman' ? '符咒' : '御灵').join(' / ')}相性</span></footer>
+        <footer className="travel-map-foot"><span>{selectedIsCurrent ? '当前推进' : '已选中查看'}：{stageLabel(selectedStage.stageNumber)} · {selectedStage.name}</span><span>{selectedStage.recommendedTags.map((tag) => tag === 'sword' ? '剑意' : tag === 'talisman' ? '符咒' : '御灵').join(' / ')}相性</span></footer>
       </section>
 
       <aside className="travel-sidebar" aria-label="游历情报">
-        <section className="travel-card travel-current-card"><header><div><small>CURRENT ROUTE</small><h2>正在游历</h2></div><span className={`travel-status ${campaign.mode}`}>{MODE_NAMES[campaign.mode]}</span></header><div className="travel-stage-title"><span>{stageLabel(currentStage.stageNumber)}</span><div><h3>{currentStage.name}</h3><p>{currentStage.regionId === 'mist_road' ? '雾路' : currentStage.regionId === 'ruined_waystation' ? '废驿' : '槐根深处'} · 推荐 {currentStage.recommendedTags.map((tag) => tag === 'sword' ? '剑意' : tag === 'talisman' ? '符咒' : '御灵').join(' / ')}</p></div></div><div className="travel-stage-facts"><span><small>波次</small><strong>{sessionIsCurrent ? currentWaveIndex + 1 : 1} <i>/ {currentStage.waves.length}</i></strong></span><span><small>稳定关</small><strong>{campaign.stableStage ? stageLabel(campaign.stableStage) : '待定'}</strong></span><span><small>境界</small><strong>{currentStage.isRealmGate ? '劫境门' : '炼气'}</strong></span></div><div className="travel-action-row"><button type="button" className="travel-action-primary" onClick={() => onEnterBattle(currentStage.stageNumber)}>{sessionIsCurrent ? '接管斗法' : '进入此关'}</button>{campaign.mode === 'paused' ? <button type="button" onClick={() => onSetMode('advance')}>继续推进</button> : <button type="button" onClick={() => onSetMode('paused')}>暂停推进</button>}<button type="button" disabled={!campaign.stableStage} className={campaign.mode === 'farm' ? 'is-selected' : ''} onClick={() => onSetMode('farm')}>刷稳定关</button></div>{campaign.trialUnlocked && <div className="travel-gate-note"><img src="/assets/pixel/boss-ancient-huai-matriarch.png" alt="千年槐姥剪影" /><p>槐阴劫境已解锁：千年槐姥仍在根下等待。先整理行囊，再渡境界门。</p></div>}</section>
+        <section className="travel-card travel-current-card"><header><div><small>{selectedIsCurrent ? 'CURRENT ROUTE' : 'INSPECTING NODE'}</small><h2>{selectedIsCurrent ? '正在游历' : '关卡情报'}</h2></div><span className={`travel-status ${pending ? 'paused' : campaign.mode}`}>{pending ? '等待领取' : offlineBusy ? '正在推演' : MODE_NAMES[campaign.mode]}</span></header><div className="travel-stage-title"><span>{stageLabel(selectedStage.stageNumber)}</span><div><h3>{selectedStage.name}</h3><p>{selectedStage.regionId === 'mist_road' ? '雾路' : selectedStage.regionId === 'ruined_waystation' ? '废驿' : '槐根深处'} · 推荐 {selectedStage.recommendedTags.map((tag) => tag === 'sword' ? '剑意' : tag === 'talisman' ? '符咒' : '御灵').join(' / ')}{selectedIsCurrent ? '' : ` · 当前推进第 ${stageLabel(currentStage.stageNumber)} 关`}</p></div></div><div className="travel-stage-facts"><span><small>波次</small><strong>{selectedIsCurrent && session ? currentWaveIndex + 1 : 1} <i>/ {selectedStage.waves.length}</i></strong></span><span><small>稳定关</small><strong>{campaign.stableStage ? stageLabel(campaign.stableStage) : '待定'}</strong></span><span><small>境界</small><strong>{selectedStage.isRealmGate ? '劫境门' : '炼气'}</strong></span></div>{battleWarning && <p className="travel-battle-warning" role="status">{battleWarning}</p>}<div className="travel-action-row"><button type="button" className="travel-action-primary" disabled={controlsLocked} onClick={() => onEnterBattle(selectedIsCurrent ? currentStage.stageNumber : currentStage.stageNumber)}>{sessionIsCurrent ? '接管斗法' : selectedIsCurrent ? '进入当前关' : `回到第 ${stageLabel(currentStage.stageNumber)} 关`}</button>{campaign.mode === 'paused' ? <button type="button" disabled={controlsLocked} onClick={() => onSetMode('advance')}>继续推进</button> : <button type="button" disabled={controlsLocked} onClick={() => onSetMode('paused')}>暂停推进</button>}<button type="button" disabled={controlsLocked || !campaign.stableStage} className={campaign.mode === 'farm' ? 'is-selected' : ''} onClick={() => onSetMode('farm')}>刷稳定关</button></div>{campaign.trialUnlocked && <div className="travel-gate-note"><img src="/assets/pixel/boss-ancient-huai-matriarch.png" alt="千年槐姥剪影" /><p>槐阴劫境已解锁：千年槐姥仍在根下等待。先整理行囊，再渡境界门。</p></div>}</section>
 
-        <section className="travel-card travel-wave-card"><header><div><small>ENCOUNTER PREVIEW</small><h2>此处异物</h2></div><span className="travel-wave-label">第 {currentWaveIndex + 1} 波</span></header><ul className="travel-enemy-list">{currentWave.map((enemyId, index) => <EnemyPreview key={`${enemyId}-${index}`} enemyId={enemyId} unit={battleEnemies[index]} />)}</ul><p className="travel-wave-note">{sessionIsCurrent ? `已运行 ${formatDuration(session.battle.timeMs)}，实时战况可接管。` : '选择进入斗法可暂时接管自动出牌。'}</p></section>
+        <section className="travel-card travel-wave-card"><header><div><small>ENCOUNTER PREVIEW</small><h2>此处异物</h2></div><span className="travel-wave-label">第 {currentWaveIndex + 1} 波</span></header><ul className="travel-enemy-list">{currentWave.map((enemyId, index) => <EnemyPreview key={`${enemyId}-${index}`} enemyId={enemyId} unit={battleEnemies[index]} />)}</ul><p className="travel-wave-note">{sessionIsCurrent ? `已运行 ${formatDuration(session.battle.timeMs)}，实时战况可接管。` : selectedIsCurrent ? '选择进入斗法可暂时接管自动出牌。' : '此节点仅供查看，不会改变当前推进关。'}</p></section>
 
         <LatestReport report={campaign.latestReport} />
         {pending && <button type="button" className="travel-pending-button" onClick={() => setDismissedOfflineReportId(undefined)}><span>卷轴待阅</span><strong>离线报告已就绪</strong><small>点击预览并领取修为、灵砂与新收藏</small></button>}

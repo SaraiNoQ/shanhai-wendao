@@ -2,17 +2,17 @@ import { z } from 'zod'
 import { AFFIXES, COLLECTION_BY_ID, EQUIPMENT, type AffixId, type CollectibleDefinition, type EssenceType, type EquipmentSlot } from '../content/collection'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
 import type { BattleContent, BuildId, CardId, SpiritId, TechniqueId, WeaponId } from '../game/types'
-import type { BattleReport, CampaignProgress, PendingOfflineSettlement } from '../game/campaign'
+import type { BattleReport, CampaignFailure, CampaignProgress, PendingOfflineSettlement } from '../game/campaign'
 
 export const SAVE_KEY = 'shanhai_wendao_save'
 export const BACKUP_SAVE_KEY = `${SAVE_KEY}_invalid_backup`
-export const SAVE_VERSION = 2
+export const SAVE_VERSION = 3
 const LEVEL_CAP = 10
 const REROLL_COST = 40
 const affixIds = Object.keys(AFFIXES) as AffixId[]
 
 export interface PlayerSave {
-  saveVersion: 2
+  saveVersion: 3
   resources: { cultivation: number; spiritSand: number; daoEssence: number; spiritEssence: number; artifactEssence: number }
   ownedIds: string[]
   levels: Record<string, number>
@@ -27,6 +27,7 @@ export interface PlayerSave {
 }
 
 type LegacyPlayerSave = Omit<PlayerSave, 'saveVersion' | 'campaign'> & { saveVersion: 1 }
+type V2PlayerSave = Omit<PlayerSave, 'saveVersion'> & { saveVersion: 2 }
 
 const buildIds = Object.keys(PROTOTYPE_CONTENT.builds) as [BuildId, ...BuildId[]]
 const weaponIds = Object.keys(PROTOTYPE_CONTENT.weapons) as [WeaponId, ...WeaponId[]]
@@ -41,14 +42,15 @@ const loadoutSchema = z.object({
   equipmentIds: z.tuple([z.string(), z.string(), z.string(), z.string()]), treasureId: z.string(), consumableIds: z.tuple([z.string(), z.string()]), autoplayPriority: z.array(z.enum(cardIds)).length(6),
 })
 const reportSchema: z.ZodType<BattleReport> = z.object({ result: z.enum(['victory', 'defeat']), durationMs: z.number().int().nonnegative(), damageBySource: z.record(z.string(), z.number()), healingBySource: z.record(z.string(), z.number()), shieldBySource: z.record(z.string(), z.number()), actionsByUnit: z.record(z.string(), z.number()), comboCounts: z.record(z.string(), z.number()).optional().transform((value) => value ?? {}), failureReason: z.string().optional() }) as z.ZodType<BattleReport>
+const campaignFailureSchema: z.ZodType<CampaignFailure> = z.object({ stageNumber: z.number().int().min(1).max(30), fallbackStage: z.number().int().min(0).max(30), reason: z.string(), battleSequence: z.number().int().nonnegative() })
 const pendingSchema: z.ZodType<PendingOfflineSettlement> = z.object({
   reportId: z.string(), durationMs: z.number().int().nonnegative(), battles: z.number().int().nonnegative(), clearedStages: z.array(z.number().int().min(1).max(30)), failedStage: z.number().int().min(1).max(30).optional(), firstFailureReason: z.string().optional(),
   resourceDelta: resourcesSchema, newOwnedIds: z.array(z.string()),
-  result: z.object({ highestClearedStage: z.number().int().min(0).max(30), stableStage: z.number().int().min(0).max(30), mode: z.enum(['advance', 'farm', 'paused']), battleSequence: z.number().int().nonnegative(), duplicateDropStreak: z.number().int().nonnegative(), trialUnlocked: z.boolean() }),
+  result: z.object({ highestClearedStage: z.number().int().min(0).max(30), stableStage: z.number().int().min(0).max(30), mode: z.enum(['advance', 'farm', 'paused']), battleSequence: z.number().int().nonnegative(), duplicateDropStreak: z.number().int().nonnegative(), trialUnlocked: z.boolean(), lastFailure: campaignFailureSchema.optional() }),
   rewardSourceIds: z.array(z.string()), contribution: reportSchema,
 })
 const campaignSchema: z.ZodType<CampaignProgress> = z.object({
-  highestClearedStage: z.number().int().min(0).max(30), stableStage: z.number().int().min(0).max(30), mode: z.enum(['advance', 'farm', 'paused']), campaignSeed: z.number().int(), battleSequence: z.number().int().nonnegative(), duplicateDropStreak: z.number().int().nonnegative(), trialUnlocked: z.boolean(), lastActiveAtMs: z.number().int().nonnegative(), settledRewardSourceIds: z.array(z.string()), latestReport: reportSchema.optional(), pendingOfflineSettlement: pendingSchema.optional(),
+  highestClearedStage: z.number().int().min(0).max(30), stableStage: z.number().int().min(0).max(30), mode: z.enum(['advance', 'farm', 'paused']), campaignSeed: z.number().int(), battleSequence: z.number().int().nonnegative(), duplicateDropStreak: z.number().int().nonnegative(), trialUnlocked: z.boolean(), lastActiveAtMs: z.number().int().nonnegative(), settledRewardSourceIds: z.array(z.string()), lastFailure: campaignFailureSchema.optional(), latestReport: reportSchema.optional(), pendingOfflineSettlement: pendingSchema.optional(),
 })
 
 const legacySaveSchema = z.object({
@@ -62,7 +64,7 @@ const legacySaveSchema = z.object({
   rerollCount: z.number().int().nonnegative(),
 })
 
-function validatePlayerShape(save: LegacyPlayerSave | PlayerSave, context: z.RefinementCtx) {
+function validatePlayerShape(save: LegacyPlayerSave | V2PlayerSave | PlayerSave, context: z.RefinementCtx) {
   const owns = (id: string) => save.ownedIds.includes(id)
   const validEquipment = save.loadout.equipmentIds.every((id, index) => COLLECTION_BY_ID[id]?.slot === (['head', 'robe', 'feet', 'charm'] as EquipmentSlot[])[index] && owns(id))
   const validLoadout = validEquipment && COLLECTION_BY_ID[save.loadout.treasureId]?.category === 'treasure' && owns(save.loadout.treasureId)
@@ -73,7 +75,8 @@ function validatePlayerShape(save: LegacyPlayerSave | PlayerSave, context: z.Ref
 }
 
 const validatedLegacySaveSchema = legacySaveSchema.superRefine(validatePlayerShape)
-const saveSchema = legacySaveSchema.extend({ saveVersion: z.literal(2), campaign: campaignSchema }).superRefine(validatePlayerShape)
+const validatedV2SaveSchema = legacySaveSchema.extend({ saveVersion: z.literal(2), campaign: campaignSchema }).superRefine(validatePlayerShape)
+const saveSchema = legacySaveSchema.extend({ saveVersion: z.literal(3), campaign: campaignSchema }).superRefine(validatePlayerShape)
 
 function initialAffixes() {
   return Object.fromEntries(EQUIPMENT.map((equipment, index) => [equipment.id, affixIds.slice(index % 3, index % 3 + (equipment.affixSlots ?? 1))])) as Record<string, AffixId[]>
@@ -106,7 +109,11 @@ export function createPlayerSave(nowMs = 0): PlayerSave {
 }
 
 export function migrateSaveV1(save: LegacyPlayerSave, nowMs: number): PlayerSave {
-  return { ...save, saveVersion: 2, campaign: createCampaign(nowMs) }
+  return { ...save, saveVersion: 3, campaign: createCampaign(nowMs) }
+}
+
+export function migrateSaveV2(save: V2PlayerSave): PlayerSave {
+  return { ...save, saveVersion: 3 }
 }
 
 export function parseSave(text: string, nowMs = 0) {
@@ -114,6 +121,8 @@ export function parseSave(text: string, nowMs = 0) {
     const raw = JSON.parse(text)
     const current = saveSchema.safeParse(raw)
     if (current.success) return current
+    const v2 = validatedV2SaveSchema.safeParse(raw)
+    if (v2.success) return saveSchema.safeParse(migrateSaveV2(v2.data))
     const legacy = validatedLegacySaveSchema.safeParse(raw)
     return legacy.success ? saveSchema.safeParse(migrateSaveV1(legacy.data, nowMs)) : current
   } catch { return saveSchema.safeParse(undefined) }
@@ -246,7 +255,7 @@ export function claimOfflineSettlement(save: PlayerSave, nowMs: number): PlayerS
       spiritEssence: save.resources.spiritEssence + pending.resourceDelta.spiritEssence,
       artifactEssence: save.resources.artifactEssence + pending.resourceDelta.artifactEssence,
     },
-    campaign: { ...save.campaign, ...pending.result, lastActiveAtMs: nowMs, latestReport: pending.contribution, settledRewardSourceIds: [...new Set([...save.campaign.settledRewardSourceIds, ...pending.rewardSourceIds, pending.reportId])], pendingOfflineSettlement: undefined },
+    campaign: { ...save.campaign, ...pending.result, lastFailure: pending.result.lastFailure, lastActiveAtMs: nowMs, latestReport: pending.contribution, settledRewardSourceIds: [...new Set([...save.campaign.settledRewardSourceIds, ...pending.rewardSourceIds, pending.reportId])], pendingOfflineSettlement: undefined },
   }
 }
 

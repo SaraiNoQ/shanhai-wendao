@@ -1,6 +1,6 @@
 # 技术架构
 
-> 状态：已采用；M4 挂机主线与离线结算已经完成，验收以 `docs/prototype-checklist.md` 为准。
+> 状态：已采用；M4.5 可读性、卡关反馈与战斗软锁修复已经完成，验收以 `docs/prototype-checklist.md` 为准。
 
 ## 1. 技术基线
 
@@ -117,7 +117,7 @@ M1 只需要：
 - 静态收藏定义保存在 `content`，玩家拥有、等级、资源、配装、词条与重铸候选保存在 `state`；存档只引用稳定 ID，不复制内容对象。
 - 参考 [Antimatter Dimensions](https://github.com/IvarK/AntimatterDimensionsSourceCode) 的单一版本化玩家状态、[Shattered Pixel Dungeon](https://github.com/00-Evan/shattered-pixel-dungeon) 的内容定义与物品状态分离，以及 [Godot 官方 JSON 存档示例](https://github.com/godotengine/godot-demo-projects/blob/master/loading/serialization/save_load_json.gd) 的显式序列化边界。
 - 不采用通用背包插件、对象场景序列化、云存档或额外状态库：当前固定槽位与命名收藏使用普通数据和 React 状态即可完整表达。
-- `saveVersion` 当前为 2。Zod 在导入边界校验版本、类别、拥有关系、配装和主线字段；错误导入不替换当前状态，损坏的本地主存档在初始化默认进度前保留原始备份。
+- `saveVersion` 当前为 3。Zod 在导入边界校验版本、类别、拥有关系、配装和主线字段；错误导入不替换当前状态，损坏的本地主存档在初始化默认进度前保留原始备份。v1 初始化主线，v2 保留已有主线并补齐 M4.5 字段。
 - 等级与装备词条在创建战斗前派生为一份 `BattleContent` 快照；战斗运行后仍只读取显式内容与状态，保持相同存档、种子和命令序列可复现。
 - 法宝主动能力与消耗品使用次数属于劫境规则，M3 只完成收藏、升级和配装槽；实际战斗按钮在 M5 接入，避免在没有劫境结算前建立临时充能状态。
 
@@ -131,10 +131,18 @@ M1 只需要：
 
 ### 10.1 M4 存档迁移与时间边界
 
-- `PlayerSave.saveVersion` 为 `2`，`campaign` 至少包含 `highestClearedStage`、`stableStage`、`mode`、`campaignSeed`、`battleSequence`、`duplicateDropStreak`、`trialUnlocked`、`lastActiveAtMs`、`settledRewardSourceIds` 和可选 `pendingOfflineSettlement`。
-- `v1 → v2` 迁移保留资源、收藏、等级、配装和词条，只初始化 M4 主线进度；迁移失败、结构损坏或导入校验失败不得覆盖当前有效存档。
+- `PlayerSave.saveVersion` 为 `3`，`campaign` 另外可选保存最近一次 `lastFailure`（失败关、回退关、原因和战斗序号），让稳定刷取不会把卡关提醒冲掉。
+- `v1 → v3` 迁移保留资源、收藏、等级、配装和词条并初始化 M4 主线；`v2 → v3` 保留已有主线进度；迁移失败、结构损坏或导入校验失败不得覆盖当前有效存档。
 - `lastActiveAtMs` 只在载入、阶段结算、`visibilitychange` 和 `pagehide` 更新。时间倒退按 0 处理，离线时间按 24 小时封顶，不依赖浏览器后台定时器。
 - 24 小时固定步模拟在开发机测得约 4 秒，已达到可感知卡顿阈值；生产端通过 Vite 原生模块 Web Worker 调用同一个 `simulateCampaign`，主线程只接收待领取结算。Worker 不含第二套规则，也不新增依赖。
+
+### 10.2 M4.5 反馈与可读性边界
+
+- 自动优先级通过 `getCardAvailability` 统一判断费用和目标；自动模式跳过无合法目标的牌，不能因死亡妖灵或非法指定目标软锁。
+- 手动接管保留结束态，结果层必须提供“返回游历并结算”和“重试本关”；在线自动结束仍即时结算。
+- `lastFailure` 作为持久卡关提醒，游历页用 `role="alert"` 展示失败关、原因和回退关，并提供调整构筑与重新挑战入口。
+- 游历和斗法正文最低 12px、辅助文字最低 10px；暗色古卷保留，但纹理遮罩不得牺牲普通文字 4.5:1 对比度。60 秒和 150 秒显示久战预警，180 秒由既有规则判败。
+- 第 4、6 关保留两波结构但第二波各减少一名随从，用于平滑新存档前期节奏；其余关卡公式不变。
 
 ## 11. M4 主线美术边界
 

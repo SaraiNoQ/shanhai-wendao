@@ -174,3 +174,20 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* M4.5: legibility is part of the combat feedback, not decoration. */
+.resource-bar small, .panel-heading small, .zone-label, .unit-title, .panel-note { font-size: .62rem; }
+.resource-bar strong { color: var(--paper-light); font-size: .76rem; }
+.panel-heading h2 { color: var(--paper-light); }
+.unit-stats, .hand-heading, .event-list li { font-size: .66rem; }
+.unit-stats { color: var(--ink-muted); }
+.status-chip { font-size: .62rem; }
+.status-chip.shield { color: #064b4e; }.status-chip.break, .status-chip.mark, .status-chip.burn { color: #64120f; }.status-chip.bond { color: #17473f; }
+.hand-card { min-height: 205px; }
+.hand-card:disabled { filter: grayscale(.55) brightness(.68); }
+.card-text { font-size: .68rem; }
+.card-unavailable { display: block; margin-top: 5px; color: #64120f; font: 700 .66rem var(--sans); }
+.battle-result-actions { display: flex; justify-content: center; gap: 8px; }
+.battle-result-actions button { min-height: 40px; }
+.battle-result-actions .result-primary { border-color: var(--ghost); color: #07110f; background: var(--ghost); }
+.time-mark.is-warning { color: var(--blood-bright); }

@@ -25,16 +25,41 @@ describe('player progression', () => {
     expect(parseSave(JSON.stringify(createPlayerSave())).success).toBe(true)
   })
 
-  it('migrates v1 while preserving collection progress', () => {
+  it('migrates v1 to v3 while preserving collection progress', () => {
     const current = createPlayerSave(100)
     const { campaign: _campaign, ...legacy } = current
     const parsed = parseSave(JSON.stringify({ ...legacy, saveVersion: 1 }), 500)
     expect(parsed.success).toBe(true)
     if (!parsed.success) return
-    expect(parsed.data.saveVersion).toBe(2)
+    expect(parsed.data.saveVersion).toBe(3)
     expect(parsed.data.ownedIds).toEqual(current.ownedIds)
     expect(parsed.data.resources).toEqual(current.resources)
     expect(parsed.data.campaign.lastActiveAtMs).toBe(500)
+    expect(parsed.data.campaign.lastFailure).toBeUndefined()
+  })
+
+  it('migrates v2 to v3 without dropping campaign progress or a failure reminder', () => {
+    const current = createPlayerSave(100)
+    const v2 = {
+      ...current,
+      saveVersion: 2 as const,
+      campaign: {
+        ...current.campaign,
+        highestClearedStage: 4,
+        stableStage: 4,
+        mode: 'farm' as const,
+        lastFailure: { stageNumber: 5, fallbackStage: 4, reason: '主将生元耗尽。', battleSequence: 8 },
+      },
+    }
+    const parsed = parseSave(JSON.stringify(v2), 500)
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.data.saveVersion).toBe(3)
+    expect(parsed.data.resources).toEqual(current.resources)
+    expect(parsed.data.ownedIds).toEqual(current.ownedIds)
+    expect(parsed.data.campaign.highestClearedStage).toBe(4)
+    expect(parsed.data.campaign.stableStage).toBe(4)
+    expect(parsed.data.campaign.lastFailure).toEqual(v2.campaign.lastFailure)
   })
 
   it('starts a formal journey with only the sword build unlocked', () => {
@@ -47,7 +72,7 @@ describe('player progression', () => {
   it('backs up a damaged local save and persists priority and upgrades', () => {
     const data = new Map([[SAVE_KEY, '{broken']])
     const storage = { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => data.set(key, value) }
-    expect(loadPlayerSave(storage).saveVersion).toBe(2)
+    expect(loadPlayerSave(storage).saveVersion).toBe(3)
     expect(data.get(BACKUP_SAVE_KEY)).toBe('{broken')
 
     const save = createPlayerSave()

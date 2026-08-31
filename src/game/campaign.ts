@@ -21,6 +21,13 @@ export interface BattleReport {
   failureReason?: string
 }
 
+export interface CampaignFailure {
+  stageNumber: number
+  fallbackStage: number
+  reason: string
+  battleSequence: number
+}
+
 export interface CampaignProgress {
   highestClearedStage: number
   stableStage: number
@@ -31,6 +38,7 @@ export interface CampaignProgress {
   trialUnlocked: boolean
   lastActiveAtMs: number
   settledRewardSourceIds: string[]
+  lastFailure?: CampaignFailure
   latestReport?: BattleReport
   pendingOfflineSettlement?: PendingOfflineSettlement
 }
@@ -53,7 +61,7 @@ export interface PendingOfflineSettlement {
   firstFailureReason?: string
   resourceDelta: { cultivation: number; spiritSand: number; daoEssence: number; spiritEssence: number; artifactEssence: number }
   newOwnedIds: string[]
-  result: Pick<CampaignProgress, 'highestClearedStage' | 'stableStage' | 'mode' | 'battleSequence' | 'duplicateDropStreak' | 'trialUnlocked'>
+  result: Pick<CampaignProgress, 'highestClearedStage' | 'stableStage' | 'mode' | 'battleSequence' | 'duplicateDropStreak' | 'trialUnlocked' | 'lastFailure'>
   rewardSourceIds: string[]
   contribution: BattleReport
 }
@@ -140,7 +148,18 @@ export function settleStage(save: PlayerSave, session: StageSession): PlayerSave
   const report = summarizeBattle(session.events, session.battle)
   if (session.status === 'defeat') {
     const fallback = save.campaign.mode === 'farm' ? Math.max(0, save.campaign.stableStage - 1) : save.campaign.stableStage
-    return { ...save, campaign: { ...save.campaign, stableStage: fallback, mode: fallback > 0 ? 'farm' : 'paused', battleSequence: save.campaign.battleSequence + 1, latestReport: report } }
+    const battleSequence = save.campaign.battleSequence + 1
+    return {
+      ...save,
+      campaign: {
+        ...save.campaign,
+        stableStage: fallback,
+        mode: fallback > 0 ? 'farm' : 'paused',
+        battleSequence,
+        lastFailure: { stageNumber: session.stageNumber, fallbackStage: fallback, reason: report.failureReason ?? '战斗失败。', battleSequence },
+        latestReport: report,
+      },
+    }
   }
   const firstClear = session.stageNumber > save.campaign.highestClearedStage
   const sourceId = firstClear ? `${stage.id}_first` : `${stage.id}_farm_${save.campaign.battleSequence}`
@@ -150,7 +169,21 @@ export function settleStage(save: PlayerSave, session: StageSession): PlayerSave
   if (firstClear) for (const id of stage.unlockIds) next = receiveCollectible(next, id)
   else next = randomDrop(next, stage.stageNumber).save
   const highest = Math.max(next.campaign.highestClearedStage, firstClear ? stage.stageNumber : 0)
-  next = { ...next, campaign: { ...next.campaign, highestClearedStage: highest, stableStage: Math.max(next.campaign.stableStage, highest), mode: stage.isRealmGate ? 'paused' : next.campaign.mode, trialUnlocked: next.campaign.trialUnlocked || stage.isRealmGate, battleSequence: next.campaign.battleSequence + 1, settledRewardSourceIds: [...next.campaign.settledRewardSourceIds, sourceId], latestReport: report } }
+  let campaign: CampaignProgress = {
+    ...next.campaign,
+    highestClearedStage: highest,
+    stableStage: Math.max(next.campaign.stableStage, highest),
+    mode: stage.isRealmGate ? 'paused' : next.campaign.mode,
+    trialUnlocked: next.campaign.trialUnlocked || stage.isRealmGate,
+    battleSequence: next.campaign.battleSequence + 1,
+    settledRewardSourceIds: [...next.campaign.settledRewardSourceIds, sourceId],
+    latestReport: report,
+  }
+  if (campaign.lastFailure && session.stageNumber >= campaign.lastFailure.stageNumber) {
+    const { lastFailure: _lastFailure, ...withoutLastFailure } = campaign
+    campaign = withoutLastFailure
+  }
+  next = { ...next, campaign }
   return next
 }
 
@@ -198,7 +231,7 @@ export function simulateCampaign(save: PlayerSave, elapsedMs: number, nowMs: num
     reportId: `offline_${save.campaign.lastActiveAtMs}_${nowMs}_${save.campaign.battleSequence}`,
     durationMs: consumedMs, battles, clearedStages, failedStage, firstFailureReason, resourceDelta,
     newOwnedIds: working.ownedIds.filter((id) => !save.ownedIds.includes(id)),
-    result: { highestClearedStage: working.campaign.highestClearedStage, stableStage: working.campaign.stableStage, mode: working.campaign.mode, battleSequence: working.campaign.battleSequence, duplicateDropStreak: working.campaign.duplicateDropStreak, trialUnlocked: working.campaign.trialUnlocked },
+    result: { highestClearedStage: working.campaign.highestClearedStage, stableStage: working.campaign.stableStage, mode: working.campaign.mode, battleSequence: working.campaign.battleSequence, duplicateDropStreak: working.campaign.duplicateDropStreak, trialUnlocked: working.campaign.trialUnlocked, lastFailure: working.campaign.lastFailure },
     rewardSourceIds: working.campaign.settledRewardSourceIds.filter((id) => !save.campaign.settledRewardSourceIds.includes(id)), contribution,
   }
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { AFFIXES, COLLECTION, COLLECTION_BY_ID, CONSUMABLES, EQUIPMENT, EQUIPMENT_SLOTS, TREASURES, type CollectionCategory, type EquipmentSlot } from './content/collection'
 import { PROTOTYPE_CONTENT } from './content/prototype'
-import { createBattle, getEffectiveCardCost, transitionBattle } from './game/battle'
+import { createBattle, getCardAvailability, transitionBattle } from './game/battle'
 import type { BattleCommand, BattleEvent, BattleState, BuildId, CardId, ComboId, UnitId, UnitState } from './game/types'
 import { advanceStageSession, createStageSession, nextCampaignStage, setCampaignMode, settleStage, type PendingOfflineSettlement, type StageSession } from './game/campaign'
 import { ESSENCE_NAMES, REROLL_ESSENCE_COST, attachOfflineSettlement, battleContentFromSave, canEquipBuild, claimOfflineSettlement, createPlayerSave, equipBuild, equipItem, loadPlayerSave, markActive, parseSave, previewReroll, resetLevel, resolveReroll, storePlayerSave, upgrade, upgradeCost, type PlayerSave } from './state/player'
@@ -118,6 +118,7 @@ function App() {
   const [campaignSession, setCampaignSession] = useState<StageSession>()
   const [visible, setVisible] = useState(() => !document.hidden)
   const [offlineBusy, setOfflineBusy] = useState(false)
+  const [offlineError, setOfflineError] = useState<string>()
   const [speed, setSpeed] = useState(1)
   const [targetingCard, setTargetingCard] = useState<CardId>()
   const battleContent = useMemo(() => battleContentFromSave(save), [save])
@@ -126,12 +127,10 @@ function App() {
   useEffect(() => { saveRef.current = save; storePlayerSave(save) }, [save])
   useEffect(() => {
     let activeWorker: Worker | undefined
-    const resume = () => {
-      const nowMs = Date.now()
-      const current = saveRef.current
-      const elapsedMs = Math.max(0, nowMs - current.campaign.lastActiveAtMs)
-      if (current.campaign.pendingOfflineSettlement || current.campaign.mode === 'paused' || elapsedMs < 250) { setSave((value) => markActive(value, nowMs)); return }
+    let retryCount = 0
+    const runOffline = (current: PlayerSave, elapsedMs: number, nowMs: number) => {
       setOfflineBusy(true)
+      setOfflineError(undefined)
       activeWorker?.terminate()
       activeWorker = new Worker(new URL('./game/offline.worker.ts', import.meta.url), { type: 'module' })
       const sourceTimestamp = current.campaign.lastActiveAtMs
@@ -140,8 +139,26 @@ function App() {
         setOfflineBusy(false)
         activeWorker?.terminate()
       }
-      activeWorker.onerror = () => { setOfflineBusy(false); activeWorker?.terminate() }
+      activeWorker.onerror = () => {
+        activeWorker?.terminate()
+        if (retryCount < 1) {
+          retryCount += 1
+          runOffline(current, elapsedMs, nowMs)
+          return
+        }
+        setOfflineBusy(false)
+        setOfflineError('离线推演失败，已从现在继续在线推进。')
+        setSave((latest) => latest.campaign.lastActiveAtMs === sourceTimestamp ? markActive(latest, Date.now()) : latest)
+      }
       activeWorker.postMessage({ save: current, elapsedMs, nowMs })
+    }
+    const resume = () => {
+      const nowMs = Date.now()
+      const current = saveRef.current
+      const elapsedMs = Math.max(0, nowMs - current.campaign.lastActiveAtMs)
+      retryCount = 0
+      if (current.campaign.pendingOfflineSettlement || current.campaign.mode === 'paused' || elapsedMs < 250) { setOfflineError(undefined); setSave((value) => markActive(value, nowMs)); return }
+      runOffline(current, elapsedMs, nowMs)
     }
     resume()
     const onVisibility = () => { const nextVisible = !document.hidden; setVisible(nextVisible); if (nextVisible) resume(); else setSave((current) => markActive(current, Date.now())) }
@@ -161,11 +178,11 @@ function App() {
     return () => window.clearInterval(timer)
   }, [campaignSession, save, speed, visible])
   useEffect(() => {
-    if (!campaignSession || campaignSession.status === 'active') return
+    if (!campaignSession || campaignSession.status === 'active' || page === 'battle') return
     const finished = campaignSession
     const timer = window.setTimeout(() => { setSave((current) => markActive(settleStage(current, finished), Date.now())); setCampaignSession(undefined) }, 0)
     return () => window.clearTimeout(timer)
-  }, [campaignSession])
+  }, [campaignSession, page])
   const dispatch = useCallback((command: BattleCommand) => {
     if (campaignSession) {
       setCampaignSession((current) => {
@@ -181,10 +198,18 @@ function App() {
   useEffect(() => { if (campaignSession || app.battle.status !== 'active' || page !== 'battle') return; const timer = window.setInterval(() => dispatch({ type: 'advance', elapsedMs: 250 * speed }), 250); return () => window.clearInterval(timer) }, [app.battle.status, campaignSession, dispatch, page, speed])
   useEffect(() => { if (!targetingCard) return; const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape') setTargetingCard(undefined) }; window.addEventListener('keydown', cancel); return () => window.removeEventListener('keydown', cancel) }, [targetingCard])
 
-  const startBattle = (stageNumber = nextCampaignStage(save)) => { if (!campaignSession || campaignSession.stageNumber !== stageNumber) setCampaignSession(createStageSession(save, stageNumber)); setTargetingCard(undefined); setPage('battle') }
+  const settleFinishedBattle = () => {
+    if (campaignSession && campaignSession.status !== 'active') {
+      setSave((current) => markActive(settleStage(current, campaignSession), Date.now()))
+      setCampaignSession(undefined)
+    }
+    setTargetingCard(undefined)
+    setPage('travel')
+  }
+  const startBattle = (stageNumber = nextCampaignStage(save)) => { if (!campaignSession || campaignSession.stageNumber !== stageNumber || campaignSession.status !== 'active') setCampaignSession(createStageSession(save, stageNumber)); setTargetingCard(undefined); setPage('battle') }
   const chooseBuild = (buildId: BuildId) => { const next = equipBuild(save, buildId); if (next === save) return; setSave(next); if (campaignSession) setCampaignSession(createStageSession(next, campaignSession.stageNumber)); else { const battle = createBattle(INITIAL_SEED, battleContentFromSave(next), buildId); setApp({ battle, events: [{ type: 'battle_started', seed: INITIAL_SEED, buildId, atMs: 0 }] }) } setTargetingCard(undefined) }
   const changeMode = (mode: PlayerSave['campaign']['mode']) => { setCampaignSession(undefined); setSave((current) => setCampaignMode(current, mode)) }
-  const navigate = (nextPage: Page) => { if (nextPage !== 'battle' && campaignSession && !campaignSession.battle.autoplay) dispatch({ type: 'set_autoplay', enabled: true }); setPage(nextPage) }
+  const navigate = (nextPage: Page) => { if (nextPage !== 'battle' && campaignSession && !campaignSession.battle.autoplay) dispatch({ type: 'set_autoplay', enabled: true }); if (nextPage !== 'battle' && campaignSession?.status !== 'active') settleFinishedBattle(); setPage(nextPage) }
   const newJourney = () => { const next = createPlayerSave(Date.now()); setSave(next); setCampaignSession(undefined); setApp({ battle: createBattle(INITIAL_SEED, battleContentFromSave(next), next.loadout.buildId), events: [] }); setPage('travel') }
   const battle = campaignSession?.battle ?? app.battle
   const activeEvents = campaignSession?.events ?? app.events
@@ -196,15 +221,15 @@ function App() {
   return <div className="game-shell">
     <header className="topbar"><div className="brand-lockup"><span className="brand-seal" aria-hidden="true">問</span><div><p>槐阴古道 · 炼气试演</p><h1>山海问道</h1></div></div><nav className="main-nav" aria-label="主要页面">{([['travel', '游历'], ['battle', '斗法'], ['loadout', '行囊'], ['codex', '图鉴'], ['save', '存档']] as [Page, string][]).map(([id, label]) => <button type="button" key={id} className={page === id ? 'is-active' : ''} onClick={() => navigate(id)}>{label}</button>)}</nav>{page === 'battle' && <div className="battle-controls"><span className="seed-mark">{campaignSession ? `第 ${campaignSession.stageNumber} 关 · ${campaignSession.waveIndex + 1} 波` : `劫数 ${battle.seed}`}</span><div className="speed-control" aria-label="战斗速度">{[1, 2, 4].map((value) => <button key={value} type="button" className={speed === value ? 'is-active' : ''} onClick={() => setSpeed(value)}>{value}×</button>)}</div><button type="button" className={battle.autoplay ? 'autoplay is-active' : 'autoplay'} onClick={() => dispatch({ type: 'set_autoplay', enabled: !battle.autoplay })}>{battle.autoplay ? '自动 · 开' : '自动 · 关'}</button><button type="button" className="restart" onClick={() => dispatch({ type: 'restart' })}>重演此关</button></div>}</header>
     <ResourceBar save={save} />
-    {page === 'travel' && <TravelPage save={save} session={campaignSession} onSetMode={changeMode} onEnterBattle={startBattle} onClaimOffline={() => setSave((current) => claimOfflineSettlement(current, Date.now()))} />}
+    {page === 'travel' && <TravelPage save={save} session={campaignSession} offlineBusy={offlineBusy} offlineError={offlineError} onSetMode={changeMode} onEnterBattle={startBattle} onClaimOffline={() => setSave((current) => claimOfflineSettlement(current, Date.now()))} onOpenLoadout={() => setPage('loadout')} onRetryOffline={() => { setOfflineError(undefined); setSave((current) => markActive(current, Date.now())) }} />}
     {page === 'loadout' && <LoadoutPage save={save} setSave={setSave} enterBattle={startBattle} />}
     {page === 'codex' && <CodexPage save={save} setSave={setSave} />}
     {page === 'save' && <SavePage save={save} setSave={(next) => { setSave(next); setCampaignSession(undefined); setPage('travel') }} onNewJourney={newJourney} />}
     {page === 'battle' && <>
       <nav className="build-strip" aria-label="快捷构筑">{Object.values(PROTOTYPE_CONTENT.builds).map((preset) => { const available = canEquipBuild(save, preset.id); return <button key={preset.id} type="button" disabled={!available} className={`${preset.id === battle.buildId ? 'is-active' : ''} ${available ? '' : 'is-locked'}`} onClick={() => chooseBuild(preset.id)}><strong>{available ? preset.name : '未解阵谱'}</strong><span>{available ? preset.subtitle : '继续游历以解锁'}</span></button> })}</nav>
-      <main className="battle-layout"><aside className="party-panel"><div className="panel-heading"><span>壹</span><div><small>PLAYER FORMATION</small><h2>修士阵</h2></div></div><UnitCard unit={battle.leader} /><div className="spirit-grid">{battle.spirits.map((spirit, index) => <UnitCard key={spirit.id} unit={spirit} bond={battle.spiritBonds[index]} selectable={Boolean(targetingCard)} onSelect={() => chooseSpiritTarget(spirit.id)} />)}</div>{targetingCard && <p className="target-note">为「{names[targetingCard]}」选择妖灵 · Esc 取消</p>}</aside>
-        <section className={`battle-table ${campaignSession && campaignSession.stageNumber > 20 ? 'region-roots' : campaignSession && campaignSession.stageNumber > 10 ? 'region-waystation' : ''}`}><div className="scene-vignette" aria-hidden="true" /><div className={`enemy-zone ${battle.enemies.length > 1 ? 'is-group' : ''}`}><p className="zone-label">槐阴异物</p><div className="enemy-card-grid">{battle.enemies.filter((unit) => unit.hp > 0).map((unit, index) => <UnitCard key={`${unit.id}-${index}`} unit={unit} enemy />)}</div></div><div className="battle-meter"><div className="resource-orb sword"><span>剑意</span><strong>{battle.swordIntent}</strong><small>/ {battle.swordIntentCap}</small></div><div className="energy-track"><div className="energy-label"><span>灵力</span><strong>{battle.energy}</strong><small>/ {battle.maxEnergy}</small></div><div className="energy-pips">{Array.from({ length: battle.maxEnergy }, (_, index) => <i key={index} className={index < battle.energy ? 'filled' : ''} />)}</div></div><div className="enemy-resources"><span>符印 <strong>{enemy.talismanMarks}</strong></span><span>灼烧 <strong>{enemy.burnStacks}</strong></span></div><p className="time-mark">{(battle.timeMs / 1_000).toFixed(1)} 秒</p></div><div className="combo-row">{battle.activeCombos.map((id) => <span key={id}>{comboNames[id]}</span>)}</div>
-          <div className="hand-zone"><div className="hand-heading"><span>{PROTOTYPE_CONTENT.builds[battle.buildId].name} · {battleContent.weapons[build.weaponId].name}</span><span>手牌 {battle.hand.length}/4</span><span>牌库 {battle.deck.length}</span><span>弃牌 {battle.discard.length}</span></div><div className="hand-cards">{battle.hand.map((cardId) => { const card = battleContent.cards[cardId]; const cost = getEffectiveCardCost(battle, card); const art = card.artKey ? artFiles[card.artKey] : undefined; return <button type="button" key={cardId} className={`hand-card archetype-${card.tags[0]} ${targetingCard === cardId ? 'is-targeting' : ''}`} disabled={battle.status !== 'active' || cost > battle.energy} onClick={() => clickCard(cardId)}><span className="card-cost">{cost}</span><span className="card-kind">{card.kind}</span><strong>{card.name}</strong><span className="card-illustration" aria-hidden="true">{art ? <img src={`${ASSET_ROOT}${art}`} alt="" /> : <i>{card.name.at(0)}</i>}</span><span className="card-text">{card.description}</span></button> })}</div></div>{battle.status !== 'active' && <div className={`battle-result ${battle.status}`} role="status"><span>{battle.status === 'victory' ? '破' : '败'}</span><h2>{battle.status === 'victory' ? '试法告捷' : '心脉受创'}</h2><p>{battle.status === 'victory' ? `「${PROTOTYPE_CONTENT.builds[battle.buildId].name}」已证可行。` : '调整出牌次序，再渡此劫。'}</p><button type="button" onClick={() => dispatch({ type: 'restart' })}>重演此劫</button></div>}
+      <main className="battle-layout"><aside className="party-panel"><div className="panel-heading"><span>壹</span><div><small>PLAYER FORMATION</small><h2>修士阵</h2></div></div><UnitCard unit={battle.leader} /><div className="spirit-grid">{battle.spirits.map((spirit, index) => <UnitCard key={spirit.id} unit={spirit} bond={battle.spiritBonds[index]} selectable={Boolean(targetingCard && spirit.hp > 0)} onSelect={() => chooseSpiritTarget(spirit.id)} />)}</div>{targetingCard && <p className="target-note">为「{names[targetingCard]}」选择存活妖灵 · Esc 取消</p>}</aside>
+        <section className={`battle-table ${campaignSession && campaignSession.stageNumber > 20 ? 'region-roots' : campaignSession && campaignSession.stageNumber > 10 ? 'region-waystation' : ''}`}><div className="scene-vignette" aria-hidden="true" /><div className={`enemy-zone ${battle.enemies.length > 1 ? 'is-group' : ''}`}><p className="zone-label">槐阴异物</p><div className="enemy-card-grid">{battle.enemies.filter((unit) => unit.hp > 0).map((unit, index) => <UnitCard key={`${unit.id}-${index}`} unit={unit} enemy />)}</div></div><div className="battle-meter"><div className="resource-orb sword"><span>剑意</span><strong>{battle.swordIntent}</strong><small>/ {battle.swordIntentCap}</small></div><div className="energy-track"><div className="energy-label"><span>灵力</span><strong>{battle.energy}</strong><small>/ {battle.maxEnergy}</small></div><div className="energy-pips">{Array.from({ length: battle.maxEnergy }, (_, index) => <i key={index} className={index < battle.energy ? 'filled' : ''} />)}</div></div><div className="enemy-resources"><span>符印 <strong>{enemy.talismanMarks}</strong></span><span>灼烧 <strong>{enemy.burnStacks}</strong></span></div><p className={`time-mark ${battle.timeMs >= 60_000 ? 'is-warning' : ''}`}>{(battle.timeMs / 1_000).toFixed(1)} 秒{battle.timeMs >= 150_000 ? ' · 30秒警告' : battle.timeMs >= 60_000 ? ' · 久战' : ''}</p></div><div className="combo-row">{battle.activeCombos.map((id) => <span key={id}>{comboNames[id]}</span>)}</div>
+          <div className="hand-zone"><div className="hand-heading"><span>{PROTOTYPE_CONTENT.builds[battle.buildId].name} · {battleContent.weapons[build.weaponId].name}</span><span>手牌 {battle.hand.length}/4</span><span>牌库 {battle.deck.length}</span><span>弃牌 {battle.discard.length}</span></div><div className="hand-cards">{battle.hand.map((cardId) => { const card = battleContent.cards[cardId]; const availability = getCardAvailability(battle, card); const art = card.artKey ? artFiles[card.artKey] : undefined; const unavailable = availability.reason === 'battle_ended' ? '战斗已结束' : availability.reason === 'insufficient_energy' ? '灵力不足' : availability.reason === 'no_living_spirit' ? '无存活妖灵' : undefined; const hint = availability.reason === 'target_required' ? '点击后选择妖灵' : undefined; return <button type="button" key={cardId} className={`hand-card archetype-${card.tags[0]} ${targetingCard === cardId ? 'is-targeting' : ''} ${unavailable ? 'is-unavailable' : ''}`} disabled={Boolean(unavailable)} onClick={() => clickCard(cardId)}><span className="card-cost">{availability.cost}</span><span className="card-kind">{card.kind}</span><strong>{card.name}</strong><span className="card-illustration" aria-hidden="true">{art ? <img src={`${ASSET_ROOT}${art}`} alt="" /> : <i>{card.name.at(0)}</i>}</span><span className="card-text">{card.description}</span>{(unavailable || hint) && <span className="card-unavailable">{unavailable ?? hint}</span>}</button> })}</div></div>{battle.status !== 'active' && <div className={`battle-result ${battle.status}`} role="status"><span>{battle.status === 'victory' ? '破' : '败'}</span><h2>{battle.status === 'victory' ? '试法告捷' : '心脉受创'}</h2><p>{battle.status === 'victory' ? `「${PROTOTYPE_CONTENT.builds[battle.buildId].name}」已证可行。` : '此关未能通过，系统已记录失败原因。'}</p><div className="battle-result-actions"><button type="button" className="result-primary" onClick={settleFinishedBattle}>返回游历并结算</button><button type="button" onClick={() => dispatch({ type: 'restart' })}>重试本关</button></div></div>}
         </section><aside className="intel-panel"><section className="build-summary"><div className="panel-heading compact"><span>贰</span><div><small>ACTIVE BUILD</small><h2>{PROTOTYPE_CONTENT.builds[battle.buildId].name}</h2></div></div><p>{battleContent.weapons[build.weaponId].name} · {battleContent.techniques[build.techniqueId].name}</p><div className="combo-list">{battle.activeCombos.map((id) => <span key={id}>连携 · {comboNames[id]}</span>)}</div></section><section className="priority-panel"><div className="panel-heading compact"><span>叁</span><div><small>AUTO CAST</small><h2>出牌次序</h2></div></div><p className="panel-note">拖动或使用箭头排序。自动模式会跳过灵力不足的牌。</p><PriorityList cardIds={battle.autoplayPriority} onChange={(cardIds) => { dispatch({ type: 'reorder_priority', cardIds }); setSave((current) => ({ ...current, loadout: { ...current.loadout, autoplayPriority: cardIds } })) }} /></section><section className="event-panel" aria-live="polite"><div className="panel-heading compact"><span>肆</span><div><small>BATTLE RECORD</small><h2>斗法录</h2></div></div><ol className="event-list">{[...activeEvents].reverse().slice(0, 10).map((event, index) => { const [time, copy] = formatEvent(event); return <li key={`${event.atMs}-${event.type}-${index}`}><time>{time}s</time><span>{copy}</span></li> })}</ol></section></aside></main>
     </>}
   </div>

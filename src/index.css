@@ -1,16 +1,16 @@
 :root {
-  --night: #050706;
-  --paper: #c4ad79;
-  --paper-light: #e0c994;
+  --night: #080b09;
+  --paper: #d7c28e;
+  --paper-light: #f0dda8;
   --ink: #1b160f;
   --ink-muted: #51422d;
-  --muted: #8c8169;
+  --muted: #b7aa8b;
   --line: rgb(185 157 99 / 19%);
   --line-strong: rgb(195 165 102 / 34%);
   --blood: #76251d;
-  --blood-bright: #bf4936;
-  --ghost: #4fd2bf;
-  --sick-gold: #b39955;
+  --blood-bright: #df684f;
+  --ghost: #65d8c5;
+  --sick-gold: #d3b760;
   --teal-bright: var(--ghost);
   --display: 'STKaiti', 'KaiTi', 'FangSong', 'Noto Serif CJK SC', serif;
   --sans: 'Songti SC', 'Noto Serif CJK SC', serif;
@@ -26,6 +26,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   color-scheme: dark;
+  line-height: 1.45;
 }
 
 * { box-sizing: border-box; }

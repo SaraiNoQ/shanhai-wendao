@@ -82,3 +82,46 @@
 @media (max-width: 1050px) { .travel-overview { grid-template-columns: 1fr; }.travel-map-shell { min-height: 0; }.travel-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); }.travel-report-card, .travel-pending-button { grid-column: 1 / -1; } }
 @media (max-width: 700px) { .travel-page { padding-inline: 10px; }.travel-heading { align-items: flex-start; flex-direction: column; }.travel-heading-stats { justify-content: flex-start; }.travel-map-header { align-items: flex-start; flex-direction: column; padding-inline: 18px; }.travel-map-progress { width: 100%; }.travel-map-legend, .travel-regions { padding-inline: 18px; }.travel-map-legend { flex-wrap: wrap; justify-content: flex-start; }.travel-node-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.travel-node-grid::before { display: none; }.travel-map-foot { align-items: flex-start; flex-direction: column; margin-inline: 18px; }.travel-sidebar { grid-template-columns: 1fr; }.travel-report-card, .travel-pending-button { grid-column: auto; }.travel-offline-columns { grid-template-columns: 1fr; }.travel-offline-columns > section + section { padding-top: 14px; padding-left: 0; border-top: 1px solid rgb(195 165 102 / 18%); border-left: 0; }.travel-modal-actions button { flex-basis: 0; }.travel-modal-seal { right: 45px; } }
 @media (prefers-reduced-motion: reduce) { .travel-node, .travel-pending-button { transition: none; } }
+
+/* M4.5 readability pass: retain the ink-dark palette without burying the text. */
+.travel-heading p { color: var(--paper); font-size: .82rem; }
+.travel-kicker { color: var(--sick-gold); font-size: .62rem; }
+.travel-heading-stats small, .travel-map-header small, .travel-card header small { color: var(--muted); font-size: .62rem; }
+.travel-heading-stats strong { color: var(--paper-light); }
+.travel-mode, .travel-status, .travel-wave-label { font-size: .68rem; }
+.travel-map-shell { background: linear-gradient(150deg, rgb(14 19 16 / 68%), rgb(4 7 6 / 88%)), var(--travel-map-image) center / cover; }
+.travel-map-wash { background: linear-gradient(90deg, rgb(3 6 5 / 72%), rgb(6 10 8 / 38%) 54%, rgb(3 6 5 / 70%)), radial-gradient(circle at 55% 18%, rgb(70 155 137 / 16%), transparent 42%), repeating-linear-gradient(0deg, transparent 0 3px, rgb(224 203 160 / 3%) 4px); }
+.travel-map-legend { color: var(--paper); font-size: .68rem; }
+.travel-region > header > span, .travel-region header small { color: var(--muted); font-size: .62rem; }
+.travel-region h3 { color: var(--paper-light); }
+.travel-node { color: var(--paper); background: rgb(7 11 10 / 86%); }
+.travel-node-number { color: var(--muted); font-size: .64rem; }
+.travel-node strong { color: var(--paper-light); font-size: .82rem; }
+.travel-node em { font-size: .62rem; }
+.travel-node.is-locked { opacity: .66; border-style: dashed; }
+.travel-node.is-selected { outline: 2px solid var(--ghost); outline-offset: -3px; box-shadow: inset 0 -3px 0 var(--ghost); }
+.travel-map-foot { color: var(--paper); font-size: .66rem; }
+.travel-card { background: linear-gradient(rgb(13 20 17 / 94%), rgb(7 12 10 / 98%)), url('/assets/pixel/texture-aged-xuan-paper.png'); }
+.travel-stage-title p, .travel-stage-facts small, .travel-enemy-copy small, .travel-enemy-copy span, .travel-wave-note { color: var(--muted); font-size: .66rem; }
+.travel-stage-facts strong { color: var(--paper-light); font-size: .95rem; }
+.travel-action-row button, .travel-modal-actions button { min-height: 40px; color: var(--paper-light); font-size: .74rem; }
+.travel-action-row .travel-action-primary, .travel-modal-actions .travel-action-primary { border-color: var(--ghost); color: #07110f; background: var(--ghost); }
+.travel-action-row button:nth-child(2) { border-color: var(--blood-bright); }
+.travel-action-row button:nth-child(2):hover:not(:disabled), .travel-action-row button:nth-child(2):focus-visible { color: var(--blood-bright); }
+.travel-action-row button.is-selected { border-color: var(--sick-gold); color: var(--sick-gold); background: rgb(211 183 96 / 12%); }
+.travel-report-meta, .travel-contribution-heading, .travel-empty { color: var(--muted); font-size: .66rem; }
+.travel-contribution li, .travel-reward-list li, .travel-new-items li { color: var(--paper); font-size: .66rem; }
+.travel-pending-button small { color: var(--paper); font-size: .66rem; }
+.travel-pending-button strong { color: var(--paper-light); font-size: .86rem; }
+.travel-blocker, .travel-state-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 0 14px; padding: 12px 15px; border: 1px solid var(--blood-bright); border-left-width: 4px; color: var(--paper-light); background: rgb(83 25 20 / 52%); }
+.travel-blocker strong { font-size: .9rem; }
+.travel-blocker p { margin: 4px 0 0; color: var(--paper); font-size: .74rem; }
+.travel-blocker-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.travel-blocker-actions button, .travel-state-banner button { min-height: 36px; padding: 7px 11px; border: 1px solid var(--paper-light); color: var(--paper-light); background: #101713; font-size: .7rem; cursor: pointer; }
+.travel-blocker-actions button:hover, .travel-blocker-actions button:focus-visible, .travel-state-banner button:hover, .travel-state-banner button:focus-visible { border-color: var(--ghost); color: var(--ghost); }
+.travel-state-banner { border-color: var(--ghost); border-left-color: var(--ghost); color: var(--paper-light); background: rgb(20 68 60 / 42%); font-size: .74rem; }
+.travel-state-banner.is-error { border-color: var(--blood-bright); border-left-color: var(--blood-bright); background: rgb(83 25 20 / 52%); }
+.travel-state-banner.is-pending { border-color: var(--sick-gold); border-left-color: var(--sick-gold); background: rgb(73 56 20 / 48%); }
+.travel-battle-warning { margin: 0 0 10px; padding: 8px 10px; border-left: 3px solid var(--blood-bright); color: #ffd2a2; background: rgb(118 37 29 / 28%); font-size: .72rem; }
+
+@media (max-width: 700px) { .travel-blocker { align-items: flex-start; flex-direction: column; }.travel-blocker-actions { width: 100%; }.travel-blocker-actions button { flex: 1; } }

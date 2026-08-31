@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
-import { createBattle, getEffectiveCardCost, transitionBattle } from './battle'
+import { createBattle, getCardAvailability, getEffectiveCardCost, transitionBattle } from './battle'
 import type { BattleContent, BattleState, BuildId, CardId, EnemyId } from './types'
 
 function withHand(state: BattleState, hand: CardId[], energy = 10): BattleState {
@@ -75,6 +75,46 @@ describe('deterministic M2 battle', () => {
     const result = transitionBattle(state, { type: 'play_card', cardId: 'protect_master', targetId: state.spirits[1].id })
     expect(result.state.spiritBonds[1]).toBe(1)
     expect(result.state.leader.shield).toBeGreaterThan(0)
+  })
+
+  it('only exposes living chosen spirits as legal targets', () => {
+    const state = withHand(createBattle(25, PROTOTYPE_CONTENT, 'pure_spirit'), ['protect_master'])
+    state.spirits[0].hp = 0
+    const card = PROTOTYPE_CONTENT.cards.protect_master
+    expect(getCardAvailability(state, card, state.spirits[0].id)).toMatchObject({ available: false, cost: 2, reason: 'target_dead' })
+    expect(getCardAvailability(state, card, state.spirits[1].id)).toMatchObject({ available: true, cost: 2, targetId: state.spirits[1].id })
+    expect(transitionBattle(state, { type: 'play_card', cardId: card.id, targetId: state.spirits[0].id }).events).toEqual([])
+  })
+
+  it('autoplay resolves a chosen-spirit card to a living target', () => {
+    const state = withHand(createBattle(26, PROTOTYPE_CONTENT, 'pure_spirit'), ['protect_master'])
+    state.spirits[0].hp = 0
+    state.autoplayPriority = ['protect_master']
+    const automatic = transitionBattle(state, { type: 'set_autoplay', enabled: true }).state
+    const result = transitionBattle(automatic, { type: 'advance', elapsedMs: 250 })
+    expect(getCardAvailability(automatic, PROTOTYPE_CONTENT.cards.protect_master, undefined, true)).toMatchObject({ available: true, targetId: state.spirits[1].id })
+    expect(result.events).toContainEqual(expect.objectContaining({ type: 'card_played', cardId: 'protect_master', automatic: true, targetId: state.spirits[1].id }))
+    expect(result.state.spiritBonds).toEqual([0, 1])
+  })
+
+  it('autoplay skips a chosen-spirit card when all spirits are dead and continues', () => {
+    const state = withHand(createBattle(27), ['protect_master', 'guiding_edge'])
+    state.spirits.forEach((spirit) => { spirit.hp = 0 })
+    state.autoplayPriority = ['protect_master', 'guiding_edge']
+    const automatic = transitionBattle(state, { type: 'set_autoplay', enabled: true }).state
+    const result = transitionBattle(automatic, { type: 'advance', elapsedMs: 250 })
+    expect(getCardAvailability(automatic, PROTOTYPE_CONTENT.cards.protect_master)).toMatchObject({ available: false, reason: 'no_living_spirit' })
+    expect(getCardAvailability(automatic, PROTOTYPE_CONTENT.cards.protect_master, undefined, true)).toMatchObject({ available: false, reason: 'no_living_spirit' })
+    expect(result.events).toContainEqual(expect.objectContaining({ type: 'card_played', cardId: 'guiding_edge', automatic: true }))
+    expect(result.events).not.toContainEqual(expect.objectContaining({ type: 'card_played', cardId: 'protect_master' }))
+  })
+
+  it('gives lowest bond to a living spirit instead of a dead one', () => {
+    const state = withHand(createBattle(28, PROTOTYPE_CONTENT, 'pure_spirit'), ['call_true_name'])
+    state.spirits[0].hp = 0
+    state.spiritBonds = [0, 1]
+    const result = transitionBattle(state, { type: 'play_card', cardId: 'call_true_name' })
+    expect(result.state.spiritBonds).toEqual([0, 2])
   })
 
   it('triggers spirit combo at three bonds', () => {
