@@ -1,6 +1,7 @@
 import { uniformInt } from 'pure-rand/distribution/uniformInt'
 import { xoroshiro128plus, xoroshiro128plusFromState } from 'pure-rand/generator/xoroshiro128plus'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
+import { COLLECTIBLE_EFFECTS } from '../content/effects'
 import type { Archetype, BattleCardInstance, BattleCardReference, BattleCommand, BattleContent, BattleEvent, BattleSetup, BattleState, BattleTransition, BuildId, CardDefinition, CardId, ComboId, EnemyDefinition, EnemyId, SpiritId, UnitDefinition, UnitId, UnitState } from './types'
 
 const STEP_MS = 250
@@ -86,6 +87,7 @@ function cloneState(state: BattleState<CardRef>): BattleState<CardRef> {
     autoplayPriority: [...state.autoplayPriority],
     battleSetup: state.battleSetup && cloneSetup(state.battleSetup),
     consumableUses: { ...state.consumableUses },
+    collectibleLevels: { ...state.collectibleLevels },
     cardTagCounts: { ...state.cardTagCounts },
     equipmentIds: [...state.equipmentIds],
     affixIds: [...state.affixIds],
@@ -138,7 +140,7 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
   const setupDiscard = setup?.discard?.map((value) => typeof value === 'string' ? createBattleCardInstance(value) : cloneCardRef(value))
   const leader = makeUnit({ ...content.leader, title: `${weapon.name} · ${technique.name}`, attackIntervalMs: weapon.attackIntervalMs })
   const spirits = build.spiritIds.map((id) => makeUnit(content.spirits[id])) as [UnitState, UnitState]
-  if (build.weaponId === 'spirit_bell') spirits.forEach((spirit) => { spirit.nextActionAtMs = Math.max(STEP_MS, spirit.attackIntervalMs - 1_500) })
+  if (build.weaponId === 'spirit_bell') spirits.forEach((spirit) => { spirit.nextActionAtMs = Math.max(STEP_MS, spirit.attackIntervalMs - contentValue(content, build.weaponId, 'leadMs', 1_500)) })
   const normalizedSetup = setup && {
     ...cloneSetup(setup),
     buildId,
@@ -176,6 +178,7 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
     treasureCharge: Math.max(0, setup?.treasureCharge ?? 0),
     treasureMaxCharge: Math.max(0, setup?.treasureMaxCharge ?? 3),
     consumableUses,
+    collectibleLevels: { ...(modifiers?.collectibleLevels ?? {}) },
     equipmentIds,
     affixIds,
     cardDiscountCharges: (affixIds.includes('tag_discount') ? 1 : 0) + (has('equipment_wind_chasing_shoes') ? 1 : 0),
@@ -201,6 +204,17 @@ function effectiveDefense(unit: UnitState) { return Math.max(0, unit.defense - M
 
 function currentBoss(state: BattleState<CardRef>) { return state.enemies.find((enemy) => enemy.id === 'ancient_huai_matriarch' && enemy.hp > 0) }
 function hasModifier(state: BattleState<CardRef>, id: string) { return state.equipmentIds.includes(id) || state.affixIds.includes(id) }
+function effectValue(state: BattleState<CardRef>, id: string, key: string, base: number) {
+  const effect = COLLECTIBLE_EFFECTS[id]
+  if (!effect?.scalableParams?.includes(key)) return base
+  const level = state.collectibleLevels[id] ?? 1
+  return Math.floor(base * (100 + Math.max(0, level - 1) * 5) / 100)
+}
+function contentValue(content: BattleContent, id: string, key: string, fallback: number) {
+  const unit = [...Object.values(content.weapons), ...Object.values(content.techniques), ...Object.values(content.spirits)].find((item) => item.id === id)
+  const value = unit?.effectParams?.[key]
+  return typeof value === 'number' ? value : fallback
+}
 
 function updateBossPhase(state: BattleState<CardRef>, events: BattleEvent[]) {
   const boss = currentBoss(state)
@@ -251,7 +265,7 @@ function applyIncoming(state: BattleState<CardRef>, sourceId: SourceId, target: 
     if ((state.consumableUses[consumableId] ?? 0) > 0) {
       state.meridianGuardTriggered = true
       state.consumableUses[consumableId] -= 1
-      addShield(state, consumableId, target, 40, events)
+      addShield(state, consumableId, target, effectValue(state, consumableId, 'shield', 40), events)
       events.push({ type: 'consumable_used', consumableId, remainingUses: state.consumableUses[consumableId], targetId: target.id, atMs: state.timeMs })
     }
   }
@@ -354,7 +368,7 @@ function detonateMarks(state: BattleState<CardRef>, sourceId: string, target: Un
   events.push({ type: 'status_changed', targetId: target.id, status: 'talisman_mark', value: target.talismanMarks, atMs: state.timeMs })
   dealFlatDamage(state, sourceId, target, Math.floor(consumed * 14 * (hasModifier(state, 'mark_burst_power') || hasModifier(state, 'equipment_thunder_coin') ? 108 : 100) / 100), events)
   paperBrideShield(state, sourceId, consumed, events)
-  if (hasModifier(state, 'equipment_talisman_silk_robe')) addShield(state, sourceId, state.leader, consumed * 2, events)
+  if (hasModifier(state, 'equipment_talisman_silk_robe')) addShield(state, sourceId, state.leader, consumed * effectValue(state, 'equipment_talisman_silk_robe', 'shieldPerMark', 2), events)
   return consumed
 }
 
@@ -369,10 +383,10 @@ function spiritComboBonus(state: BattleState<CardRef>, index: number, events: Ba
   const enemy = currentEnemy(state)
   if (!enemy) return
   switch (spirit.id) {
-    case 'iron_beak_crane': addArmorBreak(state, enemy, 1, events); break
-    case 'paper_bride': addShield(state, spirit.id, state.leader, 12, events); break
-    case 'lantern_ghost': addBurn(state, enemy, 1, events); break
-    case 'mountain_child': addShield(state, spirit.id, state.leader, 18, events); break
+    case 'iron_beak_crane': addArmorBreak(state, enemy, contentValue(PROTOTYPE_CONTENT, spirit.id, 'armorBreak', 1), events); break
+    case 'paper_bride': addShield(state, spirit.id, state.leader, contentValue(PROTOTYPE_CONTENT, spirit.id, 'shield', 12), events); break
+    case 'lantern_ghost': addBurn(state, enemy, contentValue(PROTOTYPE_CONTENT, spirit.id, 'burn', 1), events); break
+    case 'mountain_child': addShield(state, spirit.id, state.leader, contentValue(PROTOTYPE_CONTENT, spirit.id, 'shield', 18), events); break
     case 'dream_tapir': {
       const highest = [...state.hand].sort((a, b) => PROTOTYPE_CONTENT.cards[getCardId(b)].cost - PROTOTYPE_CONTENT.cards[getCardId(a)].cost)[0]
       state.discountedCardId = highest && getCardId(highest)
@@ -387,7 +401,7 @@ function triggerSpiritCombo(state: BattleState<CardRef>, index: number, events: 
   if (!enemy || spirit.hp <= 0) return
   events.push({ type: 'unit_action', unitId: spirit.id, action: '灵契协击', atMs: state.timeMs })
   dealDamage(state, spirit.id, spirit.attack, enemy, Math.floor((130 + state.spiritComboDamageBonus) * (hasModifier(state, 'spirit_combo_power') ? 108 : 100) / 100), events)
-  if (hasModifier(state, 'equipment_mountain_lord_pelt')) addShield(state, spirit.id, state.leader, 8, events)
+  if (hasModifier(state, 'equipment_mountain_lord_pelt')) addShield(state, spirit.id, state.leader, effectValue(state, 'equipment_mountain_lord_pelt', 'shield', 8), events)
   state.spiritComboCounts[index] += 1
   state.totalSpiritCombos += 1
   spiritComboBonus(state, index, events)
@@ -405,7 +419,7 @@ function triggerSpiritCombo(state: BattleState<CardRef>, index: number, events: 
   }
   if (state.techniqueId === 'hundred_spirit_codex' && !state.firstSpiritComboTriggered[index]) {
     state.firstSpiritComboTriggered[index] = true
-    gainBond(state, index, 1, events)
+    gainBond(state, index, contentValue(PROTOTYPE_CONTENT, state.techniqueId, 'firstComboBond', 1), events)
   }
 }
 
@@ -511,7 +525,7 @@ function applyCardEffect(state: BattleState<CardRef>, card: CardDefinition, targ
       state.swordIntent = 0
       events.push({ type: 'status_changed', targetId: 'battle', status: 'sword_intent', value: 0, atMs: state.timeMs })
       const crane = state.spirits.find((spirit) => spirit.id === 'iron_beak_crane')
-      if (crane) crane.nextActionAtMs = Math.max(state.timeMs, crane.nextActionAtMs - 1_500)
+      if (crane) crane.nextActionAtMs = Math.max(state.timeMs, crane.nextActionAtMs - contentValue(PROTOTYPE_CONTENT, crane.id, 'delayMs', 1_500))
       break
     }
     case 'apply_marks_and_burn': if (enemy) { addMarks(state, enemy, card.marks ?? 0, events); addBurn(state, enemy, card.burn ?? 0, events) }; break
@@ -528,7 +542,7 @@ function applyCardEffect(state: BattleState<CardRef>, card: CardDefinition, targ
     case 'prime_talisman_discount': state.talismanDiscountCharges = 2; break
     case 'detonate_marks': {
       const consumed = enemy ? detonateMarks(state, card.id, enemy, MAX_MARKS, events) : 0
-      if (state.techniqueId === 'edict_talisman_codex' && consumed >= 3) gainEnergy(state, 1, events)
+      if (state.techniqueId === 'edict_talisman_codex' && consumed >= contentValue(PROTOTYPE_CONTENT, state.techniqueId, 'detonateMarks', 3)) gainEnergy(state, contentValue(PROTOTYPE_CONTENT, state.techniqueId, 'energy', 1), events)
       const lantern = state.spirits.find((spirit) => spirit.id === 'lantern_ghost')
       if (enemy && lantern && enemy.burnStacks > 0) tickBurn(state, enemy, events)
       break
@@ -589,7 +603,7 @@ function playCard(state: BattleState<CardRef>, cardId: CardId | undefined, cardI
     state.talismanCardStreak += 1
     if (hasModifier(state, 'equipment_star_treading_shoes') && state.talismanCardStreak >= 3) { state.talismanCardStreak = 0; gainEnergy(state, 1, events) }
   } else state.talismanCardStreak = 0
-  if (hasModifier(state, 'equipment_wandering_cloud_robe') && !state.firstCardShieldGranted) { state.firstCardShieldGranted = true; addShield(state, 'equipment_wandering_cloud_robe', state.leader, 12, events) }
+  if (hasModifier(state, 'equipment_wandering_cloud_robe') && !state.firstCardShieldGranted) { state.firstCardShieldGranted = true; addShield(state, 'equipment_wandering_cloud_robe', state.leader, effectValue(state, 'equipment_wandering_cloud_robe', 'shield', 12), events) }
   events.push({ type: 'energy_changed', value: state.energy, atMs: state.timeMs })
   events.push({ type: 'card_played', cardId: selectedCardId, ...(isBattleCardInstance(selected.value) ? { instanceId: selected.value.instanceId } : {}), automatic, targetId: resolvedTarget, atMs: state.timeMs })
   applyCardEffect(state, card, resolvedTarget, events)
@@ -611,7 +625,7 @@ function playCard(state: BattleState<CardRef>, cardId: CardId | undefined, cardI
     afterSwordHit(state, events)
     if (state.techniqueId === 'hidden_edge_art') {
       state.swordCardStreak += 1
-      if (state.swordCardStreak >= 3) { state.swordCardStreak = 0; state.nextFinisherDiscount = 1 }
+      if (state.swordCardStreak >= contentValue(PROTOTYPE_CONTENT, state.techniqueId, 'swordCards', 3)) { state.swordCardStreak = 0; state.nextFinisherDiscount = contentValue(PROTOTYPE_CONTENT, state.techniqueId, 'finisherDiscount', 1) }
     }
   } else state.swordCardStreak = 0
 
@@ -619,7 +633,7 @@ function playCard(state: BattleState<CardRef>, cardId: CardId | undefined, cardI
   if (fox && state.status === 'active' && state.cardsPlayed % 3 === 0) {
     events.push({ type: 'unit_action', unitId: fox.id, action: '刃尾追击', atMs: state.timeMs })
     const target = currentEnemy(state)
-    if (target) dealDamage(state, fox.id, fox.attack, target, 65, events)
+    if (target) dealDamage(state, fox.id, fox.attack, target, contentValue(PROTOTYPE_CONTENT, fox.id, 'extraPowerPercent', 65), events)
   }
   if (state.status === 'active') drawOne(state, events)
   return true
@@ -632,11 +646,11 @@ function applyTreasure(state: BattleState<CardRef>, treasureId: string | undefin
   events.push({ type: 'treasure_used', treasureId: id, remainingCharge: state.treasureCharge, atMs: state.timeMs })
   const enemy = currentEnemy(state)
   switch (id) {
-    case 'treasure_crescent_sword_case': if (enemy) for (let hit = 0; hit < 3; hit += 1) dealDamage(state, id, state.leader.attack, enemy, 80 + state.swordIntent * 5, events); break
+    case 'treasure_crescent_sword_case': if (enemy) for (let hit = 0; hit < effectValue(state, id, 'hits', 3); hit += 1) dealDamage(state, id, state.leader.attack, enemy, effectValue(state, id, 'powerPercent', 80) + state.swordIntent * effectValue(state, id, 'intentPercent', 5), events); break
     case 'treasure_demon_revealing_mirror': if (enemy) { addArmorBreak(state, enemy, 2, events); addMarks(state, enemy, 1, events) }; break
     case 'treasure_primordial_gourd': gainEnergy(state, 3, events); state.nextFinisherDiscount = Math.max(state.nextFinisherDiscount, 2); break
-    case 'treasure_demon_binding_rope': if (enemy) enemy.nextActionAtMs += 4_000; break
-    case 'treasure_mountain_river_inkstone': [state.leader, ...state.spirits].forEach((unit) => addShield(state, id, unit, 36, events)); break
+    case 'treasure_demon_binding_rope': if (enemy) enemy.nextActionAtMs += effectValue(state, id, 'delayMs', 4_000); break
+    case 'treasure_mountain_river_inkstone': [state.leader, ...state.spirits].forEach((unit) => addShield(state, id, unit, effectValue(state, id, 'shield', 36), events)); break
     case 'treasure_soul_summoning_banner': gainBond(state, 0, 2, events); gainBond(state, 1, 2, events); break
     default: return false
   }
@@ -650,12 +664,12 @@ function applyConsumable(state: BattleState<CardRef>, consumableId: string | und
   const target = targetId ? [state.leader, ...state.spirits].find((unit) => unit.id === targetId) : state.leader
   const enemy = currentEnemy(state)
   switch (id) {
-    case 'consumable_spring_return_pill': heal(state, id, state.leader, Math.floor(state.leader.maxHp * 0.35), events); break
+    case 'consumable_spring_return_pill': heal(state, id, state.leader, Math.floor(state.leader.maxHp * effectValue(state, id, 'healPercent', 35) / 100), events); break
     case 'consumable_spirit_gathering_pill': gainEnergy(state, 3, events); break
-    case 'consumable_meridian_guard_pill': addShield(state, id, state.leader, 40, events); break
+    case 'consumable_meridian_guard_pill': addShield(state, id, state.leader, effectValue(state, id, 'shield', 40), events); break
     case 'consumable_evil_breaking_talisman': if (enemy) { enemy.attackBonusPercent = 0; addArmorBreak(state, enemy, 2, events) }; break
-    case 'consumable_armor_escape_talisman': if (target && target.hp > 0) addShield(state, id, target, 50, events); else return false; break
-    case 'consumable_thunder_summoning_talisman': state.enemies.filter((unit) => unit.hp > 0).forEach((unit) => { dealDamage(state, id, state.leader.attack, unit, 120, events); detonateMarks(state, id, unit, 1, events) }); break
+    case 'consumable_armor_escape_talisman': if (target && target.hp > 0) addShield(state, id, target, effectValue(state, id, 'shield', 50), events); else return false; break
+    case 'consumable_thunder_summoning_talisman': state.enemies.filter((unit) => unit.hp > 0).forEach((unit) => { dealDamage(state, id, state.leader.attack, unit, effectValue(state, id, 'powerPercent', 120), events); detonateMarks(state, id, unit, 1, events) }); break
     default: return false
   }
   state.consumableUses[id] -= 1
@@ -663,17 +677,17 @@ function applyConsumable(state: BattleState<CardRef>, consumableId: string | und
   return true
 }
 
-function autoAction(state: BattleState<CardRef>, unit: UnitState, events: BattleEvent[]) {
+function autoAction(state: BattleState<CardRef>, unit: UnitState, events: BattleEvent[], content: BattleContent) {
   if (unit.hp <= 0 || state.status !== 'active') return
   const enemy = currentEnemy(state)
   if (unit.id === 'leader') {
     if (!enemy) return
     const weaponName = PROTOTYPE_CONTENT.weapons[state.weaponId].name
     events.push({ type: 'unit_action', unitId: unit.id, action: weaponName, atMs: state.timeMs })
-    dealDamage(state, unit.id, unit.attack, enemy, 100, events)
+    dealDamage(state, unit.id, unit.attack, enemy, contentValue(content, state.weaponId, 'basicAttackPowerPercent', 100), events)
     state.basicAttackCount += 1
-    if (state.weaponId === 'azure_wind_sword' && state.basicAttackCount % 4 === 0) gainSwordIntent(state, 1, events)
-    if (state.weaponId === 'cinnabar_brush' && enemy.talismanMarks > 0) enemy.talismanExpiresAtMs = Math.min(enemy.talismanExpiresAtMs + 1_000, state.timeMs + 12_000)
+    if (state.weaponId === 'azure_wind_sword' && state.basicAttackCount % contentValue(content, state.weaponId, 'attackEvery', 4) === 0) gainSwordIntent(state, contentValue(content, state.weaponId, 'swordIntent', 1), events)
+    if (state.weaponId === 'cinnabar_brush' && enemy.talismanMarks > 0) enemy.talismanExpiresAtMs = Math.min(enemy.talismanExpiresAtMs + contentValue(content, state.weaponId, 'extendMs', 1_000), state.timeMs + contentValue(content, state.weaponId, 'maxDurationMs', 12_000))
   } else if (state.enemies.some((target) => target === unit)) {
     unit.actionCount += 1
     events.push({ type: 'unit_action', unitId: unit.id, action: unit.title, atMs: state.timeMs })
@@ -720,14 +734,14 @@ function autoAction(state: BattleState<CardRef>, unit: UnitState, events: Battle
     const alternatingSpirit = state.lastSpiritActionId !== undefined && state.lastSpiritActionId !== unit.id && state.timeMs - state.lastSpiritActionAtMs <= 4_000
     events.push({ type: 'unit_action', unitId: unit.id, action: unit.title, atMs: state.timeMs })
     switch (unit.id as SpiritId) {
-      case 'blade_tail_fox': dealDamage(state, unit.id, unit.attack, enemy, 55, events); dealDamage(state, unit.id, unit.attack, enemy, 55, events); break
-      case 'iron_beak_crane': dealDamage(state, unit.id, unit.attack, enemy, 150, events); addArmorBreak(state, enemy, 1, events); break
-      case 'paper_bride': addMarks(state, enemy, 1, events); addShield(state, unit.id, state.leader, 10, events); break
-      case 'lantern_ghost': dealDamage(state, unit.id, unit.attack, enemy, 80, events); addBurn(state, enemy, 1, events); break
-      case 'mountain_child': addShield(state, unit.id, state.leader, 18, events); break
-      case 'dream_tapir': dealDamage(state, unit.id, unit.attack, enemy, 60, events); gainEnergy(state, 1, events); break
+      case 'blade_tail_fox': for (let hit = 0; hit < contentValue(PROTOTYPE_CONTENT, unit.id, 'hits', 2); hit += 1) dealDamage(state, unit.id, unit.attack, enemy, contentValue(PROTOTYPE_CONTENT, unit.id, 'powerPercent', 55), events); break
+      case 'iron_beak_crane': dealDamage(state, unit.id, unit.attack, enemy, contentValue(PROTOTYPE_CONTENT, unit.id, 'powerPercent', 150), events); addArmorBreak(state, enemy, contentValue(PROTOTYPE_CONTENT, unit.id, 'armorBreak', 1), events); break
+      case 'paper_bride': addMarks(state, enemy, contentValue(PROTOTYPE_CONTENT, unit.id, 'marks', 1), events); addShield(state, unit.id, state.leader, contentValue(PROTOTYPE_CONTENT, unit.id, 'shield', 10), events); break
+      case 'lantern_ghost': dealDamage(state, unit.id, unit.attack, enemy, contentValue(PROTOTYPE_CONTENT, unit.id, 'powerPercent', 80), events); addBurn(state, enemy, contentValue(PROTOTYPE_CONTENT, unit.id, 'burn', 1), events); break
+      case 'mountain_child': addShield(state, unit.id, state.leader, contentValue(PROTOTYPE_CONTENT, unit.id, 'shield', 18), events); break
+      case 'dream_tapir': dealDamage(state, unit.id, unit.attack, enemy, contentValue(PROTOTYPE_CONTENT, unit.id, 'powerPercent', 60), events); gainEnergy(state, contentValue(PROTOTYPE_CONTENT, unit.id, 'energy', 1), events); break
     }
-    if (alternatingSpirit && hasModifier(state, 'equipment_tracking_straw_sandals') && enemy.hp > 0) dealDamage(state, unit.id, unit.attack, enemy, 25, events)
+    if (alternatingSpirit && hasModifier(state, 'equipment_tracking_straw_sandals') && enemy.hp > 0) dealDamage(state, unit.id, unit.attack, enemy, effectValue(state, 'equipment_tracking_straw_sandals', 'powerPercent', 25), events)
     if (alternatingSpirit && hasModifier(state, 'equipment_paired_bronze_bell')) { gainBond(state, 0, 1, events); gainBond(state, 1, 1, events) }
     state.lastSpiritActionId = unit.id as SpiritId
     state.lastSpiritActionAtMs = state.timeMs
@@ -766,7 +780,7 @@ function advanceStep(state: BattleState<CardRef>, content: BattleContent, events
 
   for (const actor of [state.leader, ...state.spirits, ...state.enemies]) {
     if (state.status !== 'active') break
-    if (actor.hp > 0 && state.timeMs >= actor.nextActionAtMs) { autoAction(state, actor, events); actor.nextActionAtMs += actor.attackIntervalMs }
+    if (actor.hp > 0 && state.timeMs >= actor.nextActionAtMs) { autoAction(state, actor, events, content); actor.nextActionAtMs += actor.attackIntervalMs }
   }
 
   if (state.autoplay && state.status === 'active') {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
+import { battleContentFromSave, createPlayerSave } from '../state/player'
 import { createBattle, createBattleCardInstance, getCardAvailability, getEffectiveCardCost, transitionBattle } from './battle'
 import type { BattleContent, BattleSetup, BattleState, BuildId, CardId, EnemyId } from './types'
 
@@ -314,6 +315,20 @@ describe('battle card instances', () => {
     const pill = transitionBattle(treasure.state, { type: 'use_consumable', slot: 0 })
     expect(pill.state.consumableUses.consumable_spring_return_pill).toBe(0)
     expect(pill.events).toContainEqual(expect.objectContaining({ type: 'consumable_used', consumableId: 'consumable_spring_return_pill' }))
+  })
+
+  it('applies the level snapshot to scalable treasure effects', () => {
+    const baseSave = createPlayerSave(0)
+    const highSave = { ...baseSave, levels: { ...baseSave.levels, treasure_crescent_sword_case: 10 } }
+    const make = (content: BattleContent) => {
+      const state = createBattle(321, content, { buildId: 'pure_sword', cardInstances: [createBattleCardInstance('guiding_edge', 'case-edge')], treasureId: 'treasure_crescent_sword_case', treasureCharge: 3, treasureMaxCharge: 3 })
+      state.enemies[0].hp = 9_999
+      return state
+    }
+    const base = transitionBattle(make(battleContentFromSave(baseSave)), { type: 'use_treasure' })
+    const high = transitionBattle(make(battleContentFromSave(highSave)), { type: 'use_treasure' })
+    const damage = (events: ReturnType<typeof transitionBattle>['events']) => events.filter((event) => event.type === 'damage').reduce((sum, event) => sum + event.amount, 0)
+    expect(damage(high.events)).toBeGreaterThan(damage(base.events))
   })
 
   it('automatically spends one meridian guard pill at the first low-health threshold', () => {

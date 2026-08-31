@@ -215,3 +215,21 @@ Constraints: preserve the exact character design, pose, proportions, colors and 
 | `treasure-soul-summoning-banner.png` | 招魂幡图鉴 | `exec-b5ca2c3f-e907-42a7-bd2b-9908c8d17448.png` | 最近邻缩放 256×256，保留 alpha |
 
 两次额外单图生成用于纠正首批输出主体错配：`exec-edaa4ea5-4e1a-4a9b-85d4-085f4a4fe1be.png` 明确为单枚玉佩，`exec-a486ca46-3945-447e-ad68-5b1bb4645ef4.png` 明确为一对铜铃；未采用错配的 `exec-22532d33-f0a5-45be-b619-eda06f2e60d5.png` 与 `exec-f9478cd6-3963-4897-9053-a4f42443ab47.png`。所有透明对象已用 `ffprobe` 检查为 `rgba` 且 alpha 范围为 0–255；棋盘背景已检查为 960×540/32 色。
+
+## M5.5 章节地图与角色素材记录
+
+- 生成日期：2026-09-01。
+- 生成方式：Codex 内置 OpenAI `image_gen`；模型标识与随机种子未提供。
+- 风格参考：M4/M5 的 `bg-huaiyin-road.png`、`bg-huaiyin-waystation.png`、`bg-huaiyin-roots.png`、`portrait-leader-01.png`；本批提示词要求同一阴森古卷工笔像素、约 32 色和清晰负空间。
+- 原图目录：`/Users/sarainoq/.codex/generated_images/01a04267-409c-74d2-b38c-d0d3f52f27af/`。
+
+共用提示词约束：背景仅包含章节环境，不包含路线节点、文字、数字、符号、UI、Logo 或水印；角色为一个透明背景的四头身成人修士，不包含装备叠加层、文字、伪棋盘格或水印。
+
+| 最终文件 | 用途 | 原图 | 后处理 |
+|---|---|---|---|
+| `map-mist-road-v1.png` | 雾路章节线性地图底图 | `exec-fafa4ad3-645f-4250-a4fa-d4922b875605.png` | FFmpeg 最近邻缩放 960×540、32 色 `pal8` |
+| `map-ruined-waystation-v1.png` | 废驿章节线性地图底图 | `exec-e34fc3fb-cfb9-4f76-8a8b-96cb2c3e499b.png` | FFmpeg 最近邻缩放 960×540、32 色 `pal8` |
+| `map-huai-roots-v1.png` | 槐根深处章节线性地图底图 | `exec-2216c628-3cfc-4936-b1e0-fd8e7dded3b5.png` | FFmpeg 最近邻缩放 960×540、32 色 `pal8` |
+| `character-cultivator-full-v1.png` | 角色管理页静态主将全身像 | `exec-edcd85a5-c942-4829-874d-8f75aee3c089.png` | FFmpeg 最近邻缩放 512×768，保留 `rgba` alpha |
+
+地图最终文件均为 960×540 `pal8`；主将最终文件为 512×768 `rgba`，已用 `ffprobe` 检查 alpha 范围为 0–255。Pixi/DOM 运行时只引用 `GAME_ASSETS`，不调用生成模型。

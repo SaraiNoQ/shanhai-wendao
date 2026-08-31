@@ -4,7 +4,8 @@ import { COLLECTION } from '../content/collection'
 import { getStage, getStageWaveEnemies, type StageDefinition } from '../content/stages'
 import { createBattle, startNextWave, transitionBattle } from './battle'
 import type { BattleContent, BattleEvent, BattleState, ComboId, UnitId } from './types'
-import { battleContentFromSave, receiveCollectible, type PlayerSave } from '../state/player'
+import { battleContentFromSave, receiveCollectible } from '../state/player-rules'
+import type { PlayerSave } from '../state/player'
 
 const STEP_MS = 250
 const WAVE_TIMEOUT_MS = 180_000

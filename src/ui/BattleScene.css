@@ -1,0 +1,7 @@
+.battle-scene { position: absolute; z-index: 0; inset: 0; overflow: hidden; background: #080d0c; pointer-events: none; }
+.battle-scene-canvas, .battle-scene-canvas canvas, .battle-scene-fallback { position: absolute; inset: 0; width: 100%; height: 100%; }
+.battle-scene-canvas { z-index: 1; }
+.battle-scene-canvas canvas { display: block; image-rendering: pixelated; }
+.battle-scene-fallback { z-index: 0; background-position: center; background-size: cover; filter: saturate(.8) contrast(1.05); }
+.renderer-pixi .battle-scene-fallback { opacity: 0; }
+.renderer-loading .battle-scene-fallback, .renderer-fallback .battle-scene-fallback { opacity: .82; }

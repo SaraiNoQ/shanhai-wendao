@@ -1,4 +1,5 @@
 import { PROTOTYPE_CONTENT } from './prototype'
+import { COLLECTIBLE_EFFECTS } from './effects'
 
 export type CollectionCategory = 'weapon' | 'equipment' | 'technique' | 'card' | 'treasure' | 'consumable' | 'spirit'
 export type EssenceType = 'daoEssence' | 'spiritEssence' | 'artifactEssence'
@@ -19,6 +20,8 @@ export interface CollectibleDefinition {
   slot?: EquipmentSlot
   affixSlots?: 1 | 2
   artKey?: string
+  effectId?: string
+  effectParams?: Record<string, number | string | boolean>
 }
 
 const categoryEssence: Record<CollectionCategory, EssenceType> = {
@@ -34,6 +37,8 @@ function item(id: string, name: string, category: CollectionCategory, summary: s
     unlockSource: options.unlockSource ?? '炼气试演',
     essenceType: categoryEssence[category], duplicateEssence: options.duplicateEssence ?? 12,
     slot: options.slot, affixSlots: options.affixSlots, artKey: options.artKey,
+    effectId: options.effectId ?? COLLECTIBLE_EFFECTS[id]?.effectId,
+    effectParams: options.effectParams ?? COLLECTIBLE_EFFECTS[id]?.params,
   }
 }
 
@@ -87,10 +92,10 @@ const consumables = [
 ]
 
 const existing = [
-  ...Object.values(PROTOTYPE_CONTENT.weapons).map((value) => item(value.id, value.name, 'weapon', '决定基础攻击方式与攻击间隔。', { tags: [value.tag], artKey: CORE_COLLECTION_ART_KEYS[value.id as keyof typeof CORE_COLLECTION_ART_KEYS] })),
-  ...Object.values(PROTOTYPE_CONTENT.techniques).map((value) => item(value.id, value.name, 'technique', '决定核心被动与流派资源。', { tags: [value.tag], rarity: 'uncommon', artKey: CORE_COLLECTION_ART_KEYS[value.id as keyof typeof CORE_COLLECTION_ART_KEYS] })),
-  ...Object.values(PROTOTYPE_CONTENT.spirits).map((value) => item(value.id, value.name, 'spirit', `${value.title}，可参与自动行动与灵契协击。`, { tags: value.tags, rarity: 'uncommon' })),
-  ...Object.values(PROTOTYPE_CONTENT.cards).map((value) => item(value.id, value.name, 'card', value.description, { tags: value.tags })),
+  ...Object.values(PROTOTYPE_CONTENT.weapons).map((value) => item(value.id, value.name, 'weapon', '决定基础攻击方式与攻击间隔。', { tags: [value.tag], artKey: CORE_COLLECTION_ART_KEYS[value.id as keyof typeof CORE_COLLECTION_ART_KEYS], effectId: value.effectId, effectParams: value.effectParams })),
+  ...Object.values(PROTOTYPE_CONTENT.techniques).map((value) => item(value.id, value.name, 'technique', '决定核心被动与流派资源。', { tags: [value.tag], rarity: 'uncommon', artKey: CORE_COLLECTION_ART_KEYS[value.id as keyof typeof CORE_COLLECTION_ART_KEYS], effectId: value.effectId, effectParams: value.effectParams })),
+  ...Object.values(PROTOTYPE_CONTENT.spirits).map((value) => item(value.id, value.name, 'spirit', `${value.title}，可参与自动行动与灵契协击。`, { tags: value.tags, rarity: 'uncommon', effectId: value.effectId, effectParams: value.effectParams })),
+  ...Object.values(PROTOTYPE_CONTENT.cards).map((value) => item(value.id, value.name, 'card', value.description, { tags: value.tags, effectId: value.effectId, effectParams: { cost: value.cost, targetRule: value.targetRule, ...(value.powerPercent === undefined ? {} : { powerPercent: value.powerPercent }) } })),
 ]
 
 export const COLLECTION = [...existing, ...equipment, ...treasures, ...consumables]

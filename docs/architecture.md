@@ -1,11 +1,11 @@
 # 技术架构
 
-> 状态：已采用；M5 劫境、卡牌实例和收藏行为已实现，验收以 `docs/prototype-checklist.md` 为准。
+> 状态：已采用；M5.5 角色管理、章节地图与 PixiJS 渲染性能修复已完成，验收以 `docs/prototype-checklist.md` 为准。
 
 ## 1. 技术基线
 
 - **构建与语言：** Vite + TypeScript，开启严格类型检查。
-- **界面：** React + 原生 CSS；卡桌、背包和山河图均使用 DOM，不引入游戏引擎或 Canvas 框架。
+- **界面：** React + 原生 CSS；背包、卡牌、状态和无障碍交互使用 DOM，章节地图与卡桌的背景/角色/短特效使用按需加载的 PixiJS 8 渲染层，不把 Pixi 引入规则核心。
 - **状态：** React 自带状态能力加少量纯函数，不引入全局状态库。
 - **持久化：** 浏览器本地存档，支持 JSON 导出与导入；没有账号和服务器。
 - **内容：** TypeScript 数据模块配合 `satisfies` 做静态校验；不建立自定义编辑器。
@@ -15,7 +15,7 @@
 - **测试：** 使用 Vitest 测试纯逻辑和关键流程，与 Vite 复用转换和解析配置。
 - **部署：** 使用 Cloudflare Vite 插件将 SPA 静态资源与 Worker API 原子部署到 `wendao.sarainoq.cn`。
 
-选择 DOM/React 是因为本游戏没有角色移动、物理碰撞和复杂场景渲染，主要工作是卡牌、表格、状态提示和页面切换。游戏引擎不会减少当前工作量。
+选择 DOM/React 作为信息和交互层，是因为本游戏仍没有角色移动、物理碰撞或复杂场景逻辑；PixiJS 只解决用户明确要求的地图/战斗视觉层和未来图片扩展，不承担游戏规则。完整游戏引擎不会减少当前工作量。
 
 ## 2. 调研结论
 
@@ -165,7 +165,17 @@ M1 只需要：
 - 图片不得包含文字、数字、卡框、Logo 或水印；名称、数值、描述和状态继续由 DOM/CSS 绘制。没有正式素材的内容使用统一墨影或占位图，不阻塞主线逻辑。
 - AI 只在开发期生成静态文件，运行时不调用模型、联网服务或素材管理后台。千年槐姥素材用于图鉴、劫境预告和三阶段首领战。
 
-## 13. Cloudflare 部署边界
+## 13. M5.5 页面、渲染与性能边界
+
+- 角色管理页复用 `PlayerSave.loadout`，拖拽、点击和键盘操作统一经过 `src/state/loadout.ts`；战斗/劫境期间禁止改变正在运行的配装。
+- `src/content/details.ts` 与 `src/content/effects.ts` 是详情数值和收藏效果的共享来源；角色页负责操作，图鉴负责只读展示。
+- `ChapterMapScene` 只渲染当前章节；PixiJS 负责章节/战斗背景、路线、单位和短特效，DOM 负责节点按钮、数值、手牌、日志、目标选择和无障碍。
+- Pixi 初始化失败时使用同一数据的 DOM/SVG/CSS 回退；减弱动态或页面隐藏时停止 ticker，不影响战斗规则推进。
+- `GAME_ASSETS` 记录图片尺寸、文件和场景 Bundle；Vite 指纹代码输出到 `/assets/build`，稳定像素素材保留在 `/assets/pixel`。
+- `public/_headers` 对指纹代码启用一年 `immutable`，对稳定像素素材启用一天缓存和 stale-while-revalidate；HTML 保持重新验证。
+- 离线 Worker 只依赖纯玩家规则，不加载 Zod；不使用 Service Worker、PWA、WASM 或通用游戏引擎。只有短基准证明规则计算仍是瓶颈时才重新评估。
+
+## 14. Cloudflare 部署边界
 
 - Worker 是 `wendao.sarainoq.cn` 的源站，Custom Domain 负责 DNS 与证书；不发布 `workers.dev` 或 Preview URL。
 - Vite 构建同时生成前端资源和 Worker 部署配置，Wrangler 一次上传，避免前后端版本漂移。

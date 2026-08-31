@@ -1,10 +1,11 @@
 import { z } from 'zod'
 import { AFFIXES, COLLECTION_BY_ID, EQUIPMENT, type AffixId, type CollectibleDefinition, type EssenceType, type EquipmentSlot } from '../content/collection'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
-import type { BattleContent, BuildId, CardId, SpiritId, TechniqueId, WeaponId } from '../game/types'
+import type { BuildId, CardId, SpiritId, TechniqueId, WeaponId } from '../game/types'
 import type { BattleReport, CampaignFailure, CampaignProgress, PendingOfflineSettlement } from '../game/campaign'
 import type { TrialRun, TrialSettlement } from '../game/trial'
 import { TRIAL_TILE_KINDS } from '../content/trial'
+export { battleContentFromSave, receiveCollectible } from './player-rules'
 
 export const SAVE_KEY = 'shanhai_wendao_save'
 export const BACKUP_SAVE_KEY = `${SAVE_KEY}_invalid_backup`
@@ -191,13 +192,6 @@ export function resetLevel(save: PlayerSave, id: string): PlayerSave {
   return { ...save, resources: { ...save.resources, spiritSand: save.resources.spiritSand + spiritSand, [item.essenceType]: save.resources[item.essenceType] + essence }, levels: { ...save.levels, [id]: 1 } }
 }
 
-export function receiveCollectible(save: PlayerSave, id: string): PlayerSave {
-  const item = COLLECTION_BY_ID[id]
-  if (!item) return save
-  if (!save.ownedIds.includes(id)) return { ...save, ownedIds: [...save.ownedIds, id], levels: { ...save.levels, [id]: 1 } }
-  return { ...save, resources: { ...save.resources, [item.essenceType]: save.resources[item.essenceType] + item.duplicateEssence } }
-}
-
 export function equipBuild(save: PlayerSave, buildId: BuildId): PlayerSave {
   const build = PROTOTYPE_CONTENT.builds[buildId]
   if (!canEquipBuild(save, buildId)) return save
@@ -235,35 +229,6 @@ export function resolveReroll(save: PlayerSave, accept: boolean): PlayerSave {
   const next = accept ? { ...save.equipmentAffixes, [save.pendingReroll.equipmentId]: [...save.pendingReroll.affixes] } : save.equipmentAffixes
   const { pendingReroll: _ignored, ...rest } = save
   return { ...rest, equipmentAffixes: next }
-}
-
-export function battleContentFromSave(save: PlayerSave): BattleContent {
-  const loadout = save.loadout
-  const equipment = loadout.equipmentIds.map((id) => COLLECTION_BY_ID[id])
-  const equippedAffixes = loadout.equipmentIds.flatMap((id) => save.equipmentAffixes[id] ?? [])
-  const equipmentLevels = equipment.reduce((total, value) => total + (save.levels[value.id] ?? 1) - 1, 0)
-  const maxHp = equippedAffixes.filter((id) => id === 'max_hp').length * AFFIXES.max_hp.value + equipmentLevels * 2
-  const attack = equippedAffixes.filter((id) => id === 'attack').length * AFFIXES.attack.value + ((save.levels[loadout.weaponId] ?? 1) - 1) * 2
-  const defense = equippedAffixes.filter((id) => id === 'defense').length * AFFIXES.defense.value + equipmentLevels + Math.floor(((save.levels[loadout.techniqueId] ?? 1) - 1) / 2)
-  const spirits = { ...PROTOTYPE_CONTENT.spirits }
-  loadout.spiritIds.forEach((id) => {
-    const level = save.levels[id] ?? 1
-    const base = spirits[id]
-    spirits[id] = { ...base, maxHp: base.maxHp + (level - 1) * 4, attack: base.attack + (level - 1) * 2, defense: base.defense + level - 1 }
-  })
-  const cards = Object.fromEntries(Object.entries(PROTOTYPE_CONTENT.cards).map(([id, card]) => {
-    const multiplier = 100 + ((save.levels[id] ?? 1) - 1) * 5
-    const scaled = (value: number | undefined) => value === undefined ? undefined : Math.floor(value * multiplier / 100)
-    return [id, { ...card, powerPercent: scaled(card.powerPercent), shield: scaled(card.shield), heal: scaled(card.heal) }]
-  })) as BattleContent['cards']
-  return {
-    ...PROTOTYPE_CONTENT,
-    leader: { ...PROTOTYPE_CONTENT.leader, maxHp: PROTOTYPE_CONTENT.leader.maxHp + maxHp, attack: PROTOTYPE_CONTENT.leader.attack + attack, defense: PROTOTYPE_CONTENT.leader.defense + defense },
-    spirits,
-    cards,
-    modifiers: { equipmentIds: [...loadout.equipmentIds], affixIds: equippedAffixes, treasureId: loadout.treasureId, consumableIds: [...loadout.consumableIds] },
-    builds: { ...PROTOTYPE_CONTENT.builds, [loadout.buildId]: { ...PROTOTYPE_CONTENT.builds[loadout.buildId], weaponId: loadout.weaponId, techniqueId: loadout.techniqueId, spiritIds: loadout.spiritIds, cardIds: loadout.cardIds, autoplayPriority: loadout.autoplayPriority } },
-  }
 }
 
 export function attachOfflineSettlement(save: PlayerSave, settlement: PendingOfflineSettlement, nowMs: number): PlayerSave {

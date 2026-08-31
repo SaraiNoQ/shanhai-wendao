@@ -26,6 +26,8 @@ type Collectible = {
   duplicateEssence: { type: 'dao' | 'spirit' | 'artifact'; amount: number }
   unlockSource: string
   artKey: string
+  effectId: string
+  effectParams: Record<string, number | string | boolean>
   lore: string
 }
 ```
@@ -90,6 +92,7 @@ type StageDefinition = {
   unlockIds: string[]
   isRealmGate: boolean
   backgroundArtKey: string
+  mapPosition: { x: number; y: number } // 0–100 percent within the chapter map
 }
 ```
 
@@ -148,6 +151,31 @@ type BattleCardInstance = { instanceId: string; cardId: string; upgraded: boolea
 - `TrialRun` 保存 26 个已生成格子、当前位置、已揭示格、18/22 行炁、0–2 劫印、6–12 张实例牌、法宝充能、消耗品次数、pending 事项和 secured 奖励；不保存战斗中间状态。
 - 劫境事件使用 `event_` 稳定 ID，每局最多处理一次；发现的敌人和事件写入 `discoveredLoreIds`，不进入养成等级或掉落池。
 - `TrialSettlement.sourceId` 是成功、失败或撤退结算的唯一键；失败/撤退只带回 `secured` 奖励，成功才设置 `foundation_established`。
+
+### 7.5 M5.5 章节与详情
+
+```ts
+type ChapterDefinition = {
+  id: 'mist_road' | 'ruined_waystation' | 'huai_roots'
+  name: string
+  subtitle: string
+  startStage: number
+  endStage: number
+  unlockAfterStage: number
+  mapArtKey: string
+}
+
+type EffectSpec = {
+  effectId: string
+  params: Record<string, number | string | boolean>
+  scalableParams?: string[]
+}
+```
+
+- M5.5 将 60 件收藏、14 种敌人、8 个怪谈和 30 个关卡编入 `DETAIL_ENTITY_IDS`；详情由纯函数派生，不写回存档。
+- 法宝与消耗品只有伤害、治疗、护盾、延后和增伤等效果强度按等级每级提高 5%；次数、充能、段数、层数、灵契和固定灵力不变。
+- `ChapterDefinition.unlockAfterStage` 为 `0/10/20`；章节地图每次只显示当前章节的 10 个节点，`mapPosition` 为百分比坐标，节点保持 DOM 可访问性。
+- `GAME_ASSETS` 是运行时图片注册表，必须记录稳定键、文件、宽高、用途和 Bundle；未生成素材继续使用 CSS 占位。
 
 ## 8. 内容提交检查
 

@@ -127,5 +127,8 @@
 .travel-state-banner.is-error { border-color: var(--blood-bright); border-left-color: var(--blood-bright); background: rgb(83 25 20 / 52%); }
 .travel-state-banner.is-pending { border-color: var(--sick-gold); border-left-color: var(--sick-gold); background: rgb(73 56 20 / 48%); }
 .travel-battle-warning { margin: 0 0 10px; padding: 8px 10px; border-left: 3px solid var(--blood-bright); color: #ffd2a2; background: rgb(118 37 29 / 28%); font-size: .72rem; }
+.travel-stage-rules { display: grid; gap: 4px; margin: 10px 0; padding: 8px; border-block: 1px solid var(--line); }
+.travel-stage-rules p { margin: 0; color: var(--paper); font-size: .66rem; line-height: 1.45; }
+.travel-stage-rules strong { display: inline-block; min-width: 58px; color: var(--sick-gold); }
 
 @media (max-width: 700px) { .travel-blocker { align-items: flex-start; flex-direction: column; }.travel-blocker-actions { width: 100%; }.travel-blocker-actions button { flex: 1; } }

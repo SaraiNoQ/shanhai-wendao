@@ -31,17 +31,17 @@ const cards = {
   night_of_hundred_beasts: card('night_of_hundred_beasts', '百兽夜行', 5, '御灵', ['spirit'], 'spirit_combo_finisher', '根据本场协击次数造成多段伤害，随后各补 1 点灵契。', { powerPercent: 45, artKey: 'card_night_of_hundred_beasts' }),
 } satisfies Record<CardId, CardDefinition>
 
-function spirit(id: SpiritId, name: string, title: string, maxHp: number, attack: number, defense: number, attackIntervalMs: number, tags: SpiritDefinition['tags'], artKey?: string): SpiritDefinition {
-  return { id, name, title, maxHp, attack, defense, attackIntervalMs, tags, artKey }
+function spirit(id: SpiritId, name: string, title: string, maxHp: number, attack: number, defense: number, attackIntervalMs: number, tags: SpiritDefinition['tags'], artKey: string | undefined, effectId: string, effectParams: Record<string, number | string | boolean>): SpiritDefinition {
+  return { id, name, title, maxHp, attack, defense, attackIntervalMs, tags, artKey, effectId, effectParams }
 }
 
 const spirits = {
-  blade_tail_fox: spirit('blade_tail_fox', '刃尾狐', '三式追击', 96, 17, 10, 4_500, ['sword'], 'spirit_blade_tail_fox'),
-  iron_beak_crane: spirit('iron_beak_crane', '铁喙鹤', '重击破甲', 108, 21, 14, 5_500, ['sword'], 'spirit_iron_beak_crane'),
-  paper_bride: spirit('paper_bride', '纸嫁娘', '纸衣镇魂', 94, 15, 11, 4_800, ['talisman'], 'spirit_paper_bride'),
-  lantern_ghost: spirit('lantern_ghost', '灯笼鬼', '鬼火灼魂', 88, 18, 8, 4_200, ['talisman'], 'spirit_lantern_ghost'),
-  mountain_child: spirit('mountain_child', '山童', '负石护主', 126, 14, 20, 5_200, ['spirit'], 'spirit_mountain_child'),
-  dream_tapir: spirit('dream_tapir', '食梦貘', '吞梦回灵', 102, 16, 13, 4_600, ['spirit'], 'spirit_dream_tapir'),
+  blade_tail_fox: spirit('blade_tail_fox', '刃尾狐', '三式追击', 96, 17, 10, 4_500, ['sword'], 'spirit_blade_tail_fox', 'fox_three_strikes', { hits: 2, powerPercent: 55, cardInterval: 3, extraPowerPercent: 65 }),
+  iron_beak_crane: spirit('iron_beak_crane', '铁喙鹤', '重击破甲', 108, 21, 14, 5_500, ['sword'], 'spirit_iron_beak_crane', 'crane_armor_break', { powerPercent: 150, armorBreak: 1, delayMs: 1_500 }),
+  paper_bride: spirit('paper_bride', '纸嫁娘', '纸衣镇魂', 94, 15, 11, 4_800, ['talisman'], 'spirit_paper_bride', 'bride_mark_guard', { marks: 1, shield: 10 }),
+  lantern_ghost: spirit('lantern_ghost', '灯笼鬼', '鬼火灼魂', 88, 18, 8, 4_200, ['talisman'], 'spirit_lantern_ghost', 'lantern_burn', { powerPercent: 80, burn: 1 }),
+  mountain_child: spirit('mountain_child', '山童', '负石护主', 126, 14, 20, 5_200, ['spirit'], 'spirit_mountain_child', 'mountain_guard', { shield: 18 }),
+  dream_tapir: spirit('dream_tapir', '食梦貘', '吞梦回灵', 102, 16, 13, 4_600, ['spirit'], 'spirit_dream_tapir', 'dream_energy', { powerPercent: 60, energy: 1 }),
 } satisfies Record<SpiritId, SpiritDefinition>
 
 function enemy(id: EnemyId, name: string, title: string, maxHp: number, attack: number, defense: number, attackIntervalMs: number, artKey?: string): EnemyDefinition {
@@ -84,14 +84,14 @@ export const PROTOTYPE_CONTENT = {
   enemies: [enemyDefinitions.clay_idol],
   enemyDefinitions,
   weapons: {
-    azure_wind_sword: { id: 'azure_wind_sword', name: '青岚剑', tag: 'sword', attackIntervalMs: 1_850 },
-    cinnabar_brush: { id: 'cinnabar_brush', name: '朱砂笔', tag: 'talisman', attackIntervalMs: 2_300 },
-    spirit_bell: { id: 'spirit_bell', name: '唤灵铃', tag: 'spirit', attackIntervalMs: 2_800 },
+    azure_wind_sword: { id: 'azure_wind_sword', name: '青岚剑', tag: 'sword', attackIntervalMs: 1_850, effectId: 'azure_wind_basic', effectParams: { basicAttackPowerPercent: 100, attackEvery: 4, swordIntent: 1 } },
+    cinnabar_brush: { id: 'cinnabar_brush', name: '朱砂笔', tag: 'talisman', attackIntervalMs: 2_300, effectId: 'cinnabar_mark_ink', effectParams: { extendMs: 1_000, maxDurationMs: 12_000 } },
+    spirit_bell: { id: 'spirit_bell', name: '唤灵铃', tag: 'spirit', attackIntervalMs: 2_800, effectId: 'spirit_bell_rhythm', effectParams: { leadMs: 1_500 } },
   },
   techniques: {
-    hidden_edge_art: { id: 'hidden_edge_art', name: '太虚藏锋诀', tag: 'sword' },
-    edict_talisman_codex: { id: 'edict_talisman_codex', name: '上清敕符录', tag: 'talisman' },
-    hundred_spirit_codex: { id: 'hundred_spirit_codex', name: '百灵归契篇', tag: 'spirit' },
+    hidden_edge_art: { id: 'hidden_edge_art', name: '太虚藏锋诀', tag: 'sword', effectId: 'hidden_edge_streak', effectParams: { swordCards: 3, finisherDiscount: 1 } },
+    edict_talisman_codex: { id: 'edict_talisman_codex', name: '上清敕符录', tag: 'talisman', effectId: 'edict_detonation_refund', effectParams: { detonateMarks: 3, energy: 1 } },
+    hundred_spirit_codex: { id: 'hundred_spirit_codex', name: '百灵归契篇', tag: 'spirit', effectId: 'hundred_spirit_bond', effectParams: { bondThreshold: 3, firstComboBond: 1 } },
   },
   cards,
   builds,

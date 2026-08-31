@@ -1,7 +1,68 @@
 import { PROTOTYPE_CONTENT } from './prototype'
 import type { Archetype, EnemyDefinition, EnemyId } from '../game/types'
 
-export type RegionId = 'mist_road' | 'ruined_waystation' | 'huai_roots'
+export type ChapterId = 'mist_road' | 'ruined_waystation' | 'huai_roots'
+export type RegionId = ChapterId
+
+export interface ChapterDefinition {
+  id: ChapterId
+  name: string
+  subtitle: string
+  startStage: number
+  endStage: number
+  unlockAfterStage: number
+  mapArtKey: string
+}
+
+export interface MapRouteSegment {
+  fromStage: number
+  toStage: number
+  from: { x: number; y: number }
+  to: { x: number; y: number }
+}
+
+export const CHAPTERS: readonly ChapterDefinition[] = [
+  { id: 'mist_road', name: '雾路', subtitle: '雾中寻迹', startStage: 1, endStage: 10, unlockAfterStage: 0, mapArtKey: 'map_mist_road' },
+  { id: 'ruined_waystation', name: '废驿', subtitle: '残灯问魂', startStage: 11, endStage: 20, unlockAfterStage: 10, mapArtKey: 'map_ruined_waystation' },
+  { id: 'huai_roots', name: '槐根深处', subtitle: '根下见真', startStage: 21, endStage: 30, unlockAfterStage: 20, mapArtKey: 'map_huai_roots' },
+]
+
+const CHAPTER_MAP_POSITIONS: Record<ChapterId, readonly { x: number; y: number }[]> = {
+  mist_road: [
+    { x: 8, y: 78 }, { x: 18, y: 67 }, { x: 29, y: 73 }, { x: 39, y: 58 }, { x: 50, y: 64 },
+    { x: 60, y: 49 }, { x: 69, y: 54 }, { x: 78, y: 37 }, { x: 88, y: 43 }, { x: 92, y: 20 },
+  ],
+  ruined_waystation: [
+    { x: 7, y: 55 }, { x: 17, y: 43 }, { x: 28, y: 50 }, { x: 37, y: 33 }, { x: 47, y: 41 },
+    { x: 58, y: 26 }, { x: 67, y: 37 }, { x: 77, y: 24 }, { x: 86, y: 33 }, { x: 94, y: 16 },
+  ],
+  huai_roots: [
+    { x: 8, y: 22 }, { x: 18, y: 34 }, { x: 29, y: 27 }, { x: 39, y: 44 }, { x: 50, y: 37 },
+    { x: 60, y: 55 }, { x: 70, y: 48 }, { x: 79, y: 65 }, { x: 88, y: 58 }, { x: 94, y: 79 },
+  ],
+}
+
+export function getChapter(chapterId: ChapterId) {
+  return CHAPTERS.find((chapter) => chapter.id === chapterId) ?? CHAPTERS[0]
+}
+
+export function getChapterForStage(stageNumber: number) {
+  return CHAPTERS.find((chapter) => stageNumber >= chapter.startStage && stageNumber <= chapter.endStage) ?? CHAPTERS[0]
+}
+
+export function getUnlockedChapters(campaign: { highestClearedStage: number }) {
+  return CHAPTERS.filter((chapter) => campaign.highestClearedStage >= chapter.unlockAfterStage)
+}
+
+export function getChapterRouteSegments(chapter: ChapterDefinition): MapRouteSegment[] {
+  const stages = STAGES.filter((stage) => stage.regionId === chapter.id)
+  return stages.slice(1).map((stage, index) => ({
+    fromStage: stages[index].stageNumber,
+    toStage: stage.stageNumber,
+    from: { ...stages[index].mapPosition },
+    to: { ...stage.mapPosition },
+  }))
+}
 
 export interface StageDefinition {
   id: `stage_${string}`
@@ -15,6 +76,7 @@ export interface StageDefinition {
   unlockIds: string[]
   isRealmGate: boolean
   backgroundArtKey: string
+  mapPosition: { x: number; y: number }
 }
 
 const names = [
@@ -79,6 +141,7 @@ export const STAGES: StageDefinition[] = names.map((name, index) => {
     repeatReward: { cultivation: 5 + stageNumber, spiritSand: 20 + stageNumber * 5 },
     unlockIds: unlocks[index], isRealmGate: stageNumber === 30,
     backgroundArtKey: regionId === 'mist_road' ? 'bg_huaiyin_road' : regionId === 'ruined_waystation' ? 'bg_huaiyin_waystation' : 'bg_huaiyin_roots',
+    mapPosition: { ...CHAPTER_MAP_POSITIONS[regionId][index % 10] },
   }
 })
 

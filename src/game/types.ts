@@ -98,7 +98,7 @@ export type CardEffectId =
   | 'mass_spirit_bond'
   | 'spirit_combo_finisher'
 
-export interface UnitDefinition {
+export interface UnitDefinition extends EffectParams {
   id: UnitId
   name: string
   title: string
@@ -117,8 +117,9 @@ export interface SpiritDefinition extends UnitDefinition {
   tags: Archetype[]
 }
 
-export interface WeaponDefinition { id: WeaponId; name: string; tag: Archetype; attackIntervalMs: number }
-export interface TechniqueDefinition { id: TechniqueId; name: string; tag: Archetype }
+export interface EffectParams { effectId?: string; effectParams?: Record<string, number | string | boolean> }
+export interface WeaponDefinition extends EffectParams { id: WeaponId; name: string; tag: Archetype; attackIntervalMs: number }
+export interface TechniqueDefinition extends EffectParams { id: TechniqueId; name: string; tag: Archetype }
 
 export interface CardDefinition {
   id: CardId
@@ -171,6 +172,7 @@ export interface BattleModifiers {
   affixIds: readonly string[]
   treasureId?: string
   consumableIds?: readonly string[]
+  collectibleLevels?: Readonly<Record<string, number>>
 }
 
 export interface BattleSetup {
@@ -245,6 +247,7 @@ export interface BattleState<CardReference extends BattleCardReference = CardId>
   treasureCharge: number
   treasureMaxCharge: number
   consumableUses: Record<string, number>
+  collectibleLevels: Record<string, number>
   deck: CardReference[]
   hand: CardReference[]
   discard: CardReference[]
