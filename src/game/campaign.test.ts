@@ -179,6 +179,12 @@ describe('M4 reports and offline settlement', () => {
     expect(report.comboCounts).toEqual({ flying_sword_seal: 1 })
   })
 
+  it('uses display names in defeat feedback', () => {
+    const battle = createStageSession(createPlayerSave(0), 1).battle
+    const report = summarizeBattle([{ type: 'damage', sourceId: 'headless_woodcutter', targetId: 'leader', amount: 190, shieldAbsorbed: 0, atMs: 250 }], { ...battle, status: 'defeat' })
+    expect(report.failureReason).toBe('主将被「无首樵夫」击败。')
+  })
+
   it('keeps an aggregate report marked as defeat when a later farm battle wins', () => {
     const base = createPlayerSave(0)
     const save = { ...base, campaign: { ...base.campaign, highestClearedStage: 16, stableStage: 16, mode: 'advance' as const } }

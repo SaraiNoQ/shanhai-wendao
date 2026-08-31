@@ -1,6 +1,7 @@
 import { uniformInt } from 'pure-rand/distribution/uniformInt'
 import { xoroshiro128plus } from 'pure-rand/generator/xoroshiro128plus'
 import { COLLECTION } from '../content/collection'
+import { PROTOTYPE_CONTENT } from '../content/prototype'
 import { getStage, getStageWaveEnemies, type StageDefinition } from '../content/stages'
 import { createBattle, startNextWave, transitionBattle } from './battle'
 import type { BattleContent, BattleEvent, BattleState, ComboId, UnitId } from './types'
@@ -81,7 +82,8 @@ export function summarizeBattle(events: readonly BattleEvent[], battle: BattleSt
   }
   if (battle.status === 'defeat' && !report.failureReason) {
     const lastDamage = [...events].reverse().find((event) => event.type === 'damage' && event.targetId === 'leader') as Extract<BattleEvent, { type: 'damage' }> | undefined
-    report.failureReason = lastDamage ? `主将被「${lastDamage.sourceId}」击败。` : '主将生元耗尽。'
+    const sourceName = lastDamage ? PROTOTYPE_CONTENT.enemyDefinitions[lastDamage.sourceId as keyof typeof PROTOTYPE_CONTENT.enemyDefinitions]?.name ?? lastDamage.sourceId : undefined
+    report.failureReason = sourceName ? `主将被「${sourceName}」击败。` : '主将生元耗尽。'
   }
   return report
 }

@@ -70,8 +70,8 @@ function DroppableSlot({ save, slot, label, selected, readOnly, onSelect }: { sa
   const { ref: dragRef, isDragging } = useDraggable({ id: `slot:${slot}`, data: { slotId: slot }, disabled: readOnly })
   const { ref, isDropTarget } = useDroppable({ id: `slot:${slot}`, data: { slotId: slot } })
   const item = slotItem(save, slot)
-  return <div ref={(node) => { ref(node); dragRef(node) }} className={`character-slot ${selected ? 'is-selected' : ''} ${isDropTarget ? 'is-drop-target' : ''} ${isDragging ? 'is-dragging' : ''} ${readOnly ? 'is-readonly' : ''}`}>
-    <button type="button" onClick={onSelect} aria-label={`${label}：${item?.name ?? '空位'}`}>
+  return <div className={`character-slot ${selected ? 'is-selected' : ''} ${isDropTarget ? 'is-drop-target' : ''} ${isDragging ? 'is-dragging' : ''} ${readOnly ? 'is-readonly' : ''}`}>
+    <button ref={(node) => { ref(node); dragRef(node) }} type="button" onClick={onSelect} aria-label={`${label}：${item?.name ?? '空位'}`}>
       <span className="slot-label">{label}</span>
       <span className="slot-glyph">{item?.artKey ? <img src={displayArt(item.artKey)} alt="" loading="lazy" decoding="async" /> : <i aria-hidden="true">{item?.name.at(0) ?? '空'}</i>}</span>
       <strong>{item?.name ?? '空位'}</strong>
