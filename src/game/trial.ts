@@ -287,10 +287,18 @@ function applyOutcome(run: TrialRun, outcome: { kind: string; amount?: number; i
   if (outcome.kind === 'action_points') run.actionPoints = Math.max(0, Math.min(TRIAL_MAX_ACTION_POINTS, run.actionPoints + amount))
   if (outcome.kind === 'run_currency') run.runCurrency += amount
   if (outcome.kind === 'damage_leader') run.partyHp[0] = Math.max(1, run.partyHp[0] - amount)
+  if (outcome.kind === 'damage_spirit') {
+    const maxHp = run.partyMaxHp ?? [0, PROTOTYPE_CONTENT.spirits.mountain_child.maxHp, PROTOTYPE_CONTENT.spirits.dream_tapir.maxHp]
+    const alive = [1, 2].filter((index) => run.partyHp[index] > 0)
+    if (alive.length) {
+      const index = alive.reduce((lowest, candidate) => run.partyHp[candidate] / (maxHp[candidate] || 1) < run.partyHp[lowest] / (maxHp[lowest] || 1) ? candidate : lowest, alive[0])
+      run.partyHp[index] = Math.max(1, run.partyHp[index] - Math.floor((maxHp[index] ?? run.partyHp[index]) * amount / 100))
+    }
+  }
   if (outcome.kind === 'heal_leader') run.partyHp[0] = Math.min(PROTOTYPE_CONTENT.leader.maxHp, run.partyHp[0] + amount)
   if (outcome.kind === 'reveal_tiles') revealRandom(run, amount)
   if (outcome.kind === 'grant_seal') run.trialSeals = Math.min(TRIAL_REQUIRED_SEALS, run.trialSeals + amount)
-  if (outcome.kind === 'treasure_charge') run.treasureCharge += amount
+  if (outcome.kind === 'treasure_charge') run.treasureCharge = Math.min(3, run.treasureCharge + amount)
   if (outcome.kind === 'enemy_attack_bonus') run.nextBattleAttackBonusPercent = Math.max(run.nextBattleAttackBonusPercent, amount)
   if (outcome.kind === 'lore' && outcome.id) addLore(run, outcome.id, events)
   if (outcome.kind === 'temporary_card' && outcome.id) {
@@ -389,7 +397,7 @@ function choosePending(run: TrialRun, command: Extract<TrialCommand, { type: 'ch
     else if (command.optionId === 'reveal' && run.runCurrency >= 30) { run.runCurrency -= 30; revealRandom(run, 3) }
     else return { run, events, error: '商人交易条件不足。' }
   } else if (run.pending.kind === 'chest') {
-    if (command.optionId === 'charge') run.treasureCharge += 2
+    if (command.optionId === 'charge') run.treasureCharge = Math.min(3, run.treasureCharge + 2)
     else if (command.optionId === 'material') addReward(run, { id: `${run.runId}:chest`, kind: 'material', resource: 'spiritSand', amount: 10, secured: true }, events)
     else return { run, events, error: '无效的宝箱选项。' }
   } else if (run.pending.kind === 'camp') {
@@ -429,7 +437,7 @@ export function createTrialBattle(run: TrialRun, save: PlayerSave): BattleState<
   const attackBonus = run.nextBattleAttackBonusPercent
   const content: BattleContent = { ...base, enemies: enemies.filter(Boolean).map((enemy) => ({ ...enemy, attack: Math.floor(enemy.attack * (100 + attackBonus) / 100) })) as EnemyDefinition[] }
   const battle = createBattle(run.seed + run.battleSequence * 997 + hash(run.pending.tileId), content, {
-    buildId: save.loadout.buildId, cardInstances: run.cardInstances, treasureId: run.treasureId, treasureCharge: run.treasureCharge, treasureMaxCharge: 3,
+    buildId: run.buildId, cardInstances: run.cardInstances, treasureId: run.treasureId, treasureCharge: run.treasureCharge, treasureMaxCharge: 3,
     consumableIds: save.loadout.consumableIds, consumableUses: Object.fromEntries(save.loadout.consumableIds.map((id, index) => [id, run.consumableUses[index]])),
   })
   battle.leader.hp = Math.min(battle.leader.maxHp, run.partyHp[0]); battle.spirits[0].hp = Math.min(battle.spirits[0].maxHp, run.partyHp[1]); battle.spirits[1].hp = Math.min(battle.spirits[1].maxHp, run.partyHp[2]); battle.autoplay = true
@@ -439,6 +447,7 @@ export function createTrialBattle(run: TrialRun, save: PlayerSave): BattleState<
 export function resolveTrialBattle(run: TrialRun, battle: BattleState<BattleCardInstance>, _battleEvents: readonly BattleEvent[]): TrialTransition {
   const next = structuredClone(run) as TrialRun
   if (!next.pending || next.pending.kind !== 'battle') return { run: next, events: [], error: '当前没有待处理战斗。' }
+  if (battle.status === 'active') return { run: next, events: [], error: '战斗尚未结束。' }
   next.partyHp = [battle.leader.hp, battle.spirits[0].hp, battle.spirits[1].hp]
   next.battleTimeMs += battle.timeMs
   next.battleSequence += 1
@@ -462,7 +471,7 @@ export function resolveTrialBattle(run: TrialRun, battle: BattleState<BattleCard
 export function transitionTrial(current: TrialRun, command: TrialCommand, _content = PROTOTYPE_CONTENT): TrialTransition {
   const run = structuredClone(current) as TrialRun
   const events: TrialEvent[] = []
-  if (run.status !== 'active' && command.type !== 'retreat') return { run, events, error: '本局已经结束。' }
+  if (run.status !== 'active') return { run, events, error: '本局已经结束。' }
   if (command.type === 'retreat') { run.status = 'retreat'; run.pending = undefined; events.push({ type: 'run_ended', result: 'retreat' }); return { run, events } }
   if (command.type === 'resolve_battle') return resolveTrialBattle(run, command.battle, command.events)
   if (command.type === 'choose') return choosePending(run, command, events)

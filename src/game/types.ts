@@ -257,6 +257,7 @@ export interface BattleState<CardReference extends BattleCardReference = CardId>
   playedCardIds: CardId[]
   talismanCardStreak: number
   firstCardShieldGranted: boolean
+  meridianGuardTriggered: boolean
   lastSpiritActionId?: SpiritId
   lastSpiritActionAtMs: number
 }

@@ -316,6 +316,22 @@ describe('battle card instances', () => {
     expect(pill.events).toContainEqual(expect.objectContaining({ type: 'consumable_used', consumableId: 'consumable_spring_return_pill' }))
   })
 
+  it('automatically spends one meridian guard pill at the first low-health threshold', () => {
+    const state = createBattle(32, PROTOTYPE_CONTENT, {
+      buildId: 'pure_sword', cardInstances: [createBattleCardInstance('guiding_edge', 'guard-edge')],
+      consumableIds: ['consumable_meridian_guard_pill'], consumableUses: { consumable_meridian_guard_pill: 2 },
+    })
+    state.leader.hp = Math.floor(state.leader.maxHp * 0.32)
+    const enemy = state.enemies[0]
+    enemy.nextActionAtMs = 250
+    const first = transitionBattle(state, { type: 'advance', elapsedMs: 250 })
+    expect(first.state.meridianGuardTriggered).toBe(true)
+    expect(first.state.consumableUses.consumable_meridian_guard_pill).toBe(1)
+    expect(first.events).toContainEqual(expect.objectContaining({ type: 'consumable_used', consumableId: 'consumable_meridian_guard_pill' }))
+    const second = transitionBattle(first.state, { type: 'advance', elapsedMs: 250 })
+    expect(second.state.consumableUses.consumable_meridian_guard_pill).toBe(1)
+  })
+
   it('moves the Huai Matriarch through its three deterministic phases', () => {
     const content: BattleContent = { ...PROTOTYPE_CONTENT, enemies: [PROTOTYPE_CONTENT.enemyDefinitions.ancient_huai_matriarch] }
     const state = createBattle(33, content, { cardInstances: [createBattleCardInstance('guiding_edge', 'boss-edge')] })

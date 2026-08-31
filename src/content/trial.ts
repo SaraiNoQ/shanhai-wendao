@@ -70,6 +70,7 @@ export type TrialEventOutcomeKind =
   | 'action_points'
   | 'run_currency'
   | 'damage_leader'
+  | 'damage_spirit'
   | 'heal_leader'
   | 'reveal_tiles'
   | 'temporary_card'
@@ -115,8 +116,8 @@ export const TRIAL_EVENTS = [
     body: '浓雾里停着一顶没有脚印的红轿，轿帘随风向内招手。', loreUnlock: 'event_roadside_red_sedan', oncePerRun: true,
     choices: [
       { id: 'lift_curtain', label: '掀帘', description: '看看轿中究竟坐着谁。', requirements: [], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'damage_leader', amount: 30, text: '轿中阴气缠身，主将损失约 15% 生元。' }, { kind: 'run_currency', amount: 30, text: '从空轿中拾得一串旧冥钱。' }], loreUnlock: 'event_roadside_red_sedan' },
-      { id: 'walk_around', label: '绕行', description: '不惊动轿中之物，沿雾边离开。', requirements: [], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'action_points', amount: 1, text: '绕行熟悉了雾路，返还一点行炁。' }] },
-      { id: 'send_spirit', label: '让妖灵探查', description: '让一只妖灵靠近轿门，替你听一听里面的动静。', requirements: [{ kind: 'tag', tag: 'spirit' }], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'reveal_tiles', amount: 2, text: '妖灵认出轿后的旧路，揭开两格迷雾。' }, { kind: 'lore', text: '记下红轿的来历。' }], loreUnlock: 'event_roadside_red_sedan' },
+      { id: 'walk_around', label: '绕行', description: '不惊动轿中之物，沿雾边离开。', requirements: [], costs: [{ resource: 'actionPoints', amount: 2 }], outcomes: [] },
+      { id: 'send_spirit', label: '让妖灵探查', description: '让一只妖灵靠近轿门，替你听一听里面的动静。', requirements: [{ kind: 'tag', tag: 'spirit' }], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'damage_spirit', amount: 10, text: '妖灵被轿中阴气擦伤，损失 10% 生元。' }, { kind: 'reveal_tiles', amount: 3, text: '妖灵认出轿后的旧路，揭开三格迷雾。' }, { kind: 'lore', text: '记下红轿的来历。' }], loreUnlock: 'event_roadside_red_sedan' },
     ],
   },
   {
@@ -132,7 +133,7 @@ export const TRIAL_EVENTS = [
     id: 'event_borrowed_umbrella', title: '雨夜借伞', bodyKey: 'trial_event_borrowed_umbrella',
     body: '雨幕里站着一个没有影子的人，向你借一把伞，说要去槐树下还愿。', loreUnlock: 'event_borrowed_umbrella', oncePerRun: true,
     choices: [
-      { id: 'lend_umbrella', label: '借伞', description: '把伞递给无影之人，接下它留下的因果。', requirements: [], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'encounter', id: 'borrowed_life_crone', text: '雨声引来借命婆，下一场战斗变为高风险遭遇。' }, { kind: 'enemy_attack_bonus', amount: 15, text: '因果加重，下一场敌人攻势提高 15%。' }], loreUnlock: 'event_borrowed_umbrella' },
+      { id: 'lend_umbrella', label: '借伞', description: '把伞递给无影之人，接下它留下的因果。', requirements: [], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'encounter', id: 'borrowed_life_crone', text: '雨声引来借命婆，下一场战斗变为高风险遭遇。' }, { kind: 'enemy_attack_bonus', amount: 15, text: '因果加重，下一场敌人攻势提高 15%。' }, { kind: 'run_currency', amount: 40, text: '无影人留下四十劫尘作为镇物情报。' }], loreUnlock: 'event_borrowed_umbrella' },
       { id: 'refuse_umbrella', label: '拒绝', description: '告诉它槐阴古道不替陌生人遮雨。', requirements: [], costs: [], outcomes: [{ kind: 'run_currency', amount: 8, text: '无影之人留下几枚湿冷的冥钱。' }] },
       { id: 'ask_for_name', label: '先问姓名', description: '不接伞，只追问它要去见谁。', requirements: [], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'reveal_tiles', amount: 1, text: '它指向槐根深处，揭开一格首领路线。' }, { kind: 'lore', text: '记下无影之人的称呼。' }], loreUnlock: 'event_borrowed_umbrella' },
     ],
@@ -141,9 +142,9 @@ export const TRIAL_EVENTS = [
     id: 'event_moon_in_well', title: '井中月', bodyKey: 'trial_event_moon_in_well',
     body: '废井里映着一轮不属于今夜的月亮，水面下似有一张牌被月光托起。', loreUnlock: 'event_moon_in_well', oncePerRun: true,
     choices: [
-      { id: 'fish_reflection', label: '打捞倒影', description: '伸手捞出井中那张不知来处的牌。', requirements: [], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'copy_temporary_card', text: '复制一张当前临时牌；牌组上限仍为 12 张。' }] },
+      { id: 'fish_reflection', label: '打捞倒影', description: '伸手捞出井中那张不知来处的牌。', requirements: [], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'damage_leader', amount: 29, text: '月影割过手腕，主将损失约 15% 生元。' }, { kind: 'copy_temporary_card', text: '复制一张当前临时牌；牌组上限仍为 12 张。' }] },
       { id: 'offer_spirit_sand', label: '投入灵砂', description: '以灵砂买下井中月的一次照见。', requirements: [{ kind: 'resource', resource: 'spiritSand', minimum: 60 }], costs: [{ resource: 'spiritSand', amount: 60 }], outcomes: [{ kind: 'upgrade_temporary_card', text: '选择一张临时牌，获得本局强化。' }] },
-      { id: 'seal_the_well', label: '封井', description: '以符纸压住井口，不让月影上岸。', requirements: [], costs: [], outcomes: [{ kind: 'run_currency', amount: 12, text: '井中月退去，留下少量灵砂。' }] },
+      { id: 'seal_the_well', label: '封井', description: '以符纸压住井口，不让月影上岸。', requirements: [], costs: [], outcomes: [{ kind: 'run_currency', amount: 10, text: '井中月退去，留下少量灵砂。' }] },
     ],
   },
   {
@@ -151,7 +152,7 @@ export const TRIAL_EVENTS = [
     body: '黄皮子拦路作揖，问你它像不像一位得道仙家。它身后的尾巴已经数不清了。', loreUnlock: 'event_title_seeking_immortal', oncePerRun: true,
     choices: [
       { id: 'acknowledge_immortal', label: '认可', description: '顺着它的心愿，称它一声仙家。', requirements: [], costs: [], outcomes: [{ kind: 'run_currency', amount: 35, text: '黄仙大喜，送出一袋冥钱。' }, { kind: 'encounter', id: 'title_seeking_immortal', text: '它请同族试法，下一场普通战斗加入讨封黄仙。' }, { kind: 'enemy_attack_bonus', amount: 15, text: '下一场敌人攻势提高 15%。' }], loreUnlock: 'event_title_seeking_immortal' },
-      { id: 'deny_immortal', label: '否认', description: '直说它只是拦路的黄鼠狼。', requirements: [], costs: [], outcomes: [{ kind: 'encounter', id: 'title_seeking_immortal', text: '黄仙恼怒，下一场遭遇的敌人获得额外攻势。' }, { kind: 'enemy_attack_bonus', amount: 15, text: '下一场敌人攻势提高 15%。' }] },
+      { id: 'deny_immortal', label: '否认', description: '直说它只是拦路的黄鼠狼。', requirements: [], costs: [], outcomes: [{ kind: 'encounter', id: 'title_seeking_immortal', text: '黄仙恼怒，下一场遭遇的敌人获得额外攻势。' }, { kind: 'enemy_attack_bonus', amount: 15, text: '下一场敌人攻势提高 15%。' }, { kind: 'run_currency', amount: 45, text: '黄仙留下四十五劫尘后遁入雾中。' }] },
       { id: 'stay_silent', label: '沉默', description: '不替它讨封，也不与它结怨。', requirements: [], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'reveal_tiles', amount: 2, text: '黄仙自讨没趣，临走前指了两条雾路。' }] },
     ],
   },
@@ -178,8 +179,8 @@ export const TRIAL_EVENTS = [
     body: '残庙的山神像只剩半张脸，供桌上却有一盏刚点燃的灯，灯芯朝你轻轻弯腰。', loreUnlock: 'event_ruined_mountain_shrine', oncePerRun: true,
     choices: [
       { id: 'repair_shrine', label: '修缮', description: '用随身材料扶正神像，补上断裂的香案。', requirements: [{ kind: 'resource', resource: 'spiritSand', minimum: 30 }], costs: [{ resource: 'spiritSand', amount: 30 }], outcomes: [{ kind: 'heal_leader', amount: 57, text: '山风回暖，主将恢复约 30% 生元。' }, { kind: 'action_points', amount: 1, text: '香火为你补回一点行炁。' }] },
-      { id: 'take_offering', label: '取走供品', description: '拿走供桌上未腐的果酒和香火钱。', requirements: [], costs: [], outcomes: [{ kind: 'run_currency', amount: 30, text: '获得一笔本局货币。' }, { kind: 'encounter', id: 'hundred_eyed_branch', text: '庙后槐枝睁眼，下一场遭遇变为百眼槐枝。' }, { kind: 'enemy_attack_bonus', amount: 15, text: '下一场敌人攻势提高 15%。' }] },
-      { id: 'stay_overnight', label: '留宿', description: '在残庙里守到天亮，赌一盏灯的善意。', requirements: [], costs: [{ resource: 'actionPoints', amount: 1 }], outcomes: [{ kind: 'treasure_charge', amount: 1, text: '法宝获得一次额外充能。' }, { kind: 'heal_leader', amount: 15, text: '主将恢复少量生元。' }], loreUnlock: 'event_ruined_mountain_shrine' },
+      { id: 'take_offering', label: '取走供品', description: '拿走供桌上未腐的果酒和香火钱。', requirements: [], costs: [], outcomes: [{ kind: 'treasure_charge', amount: 2, text: '供桌下藏着的香火让法宝获得两点充能。' }, { kind: 'enemy_attack_bonus', amount: 15, text: '山神不悦，下一场敌人攻势提高 15%。' }] },
+      { id: 'stay_overnight', label: '留宿', description: '在残庙里守到天亮，赌一盏灯的善意。', requirements: [], costs: [{ resource: 'actionPoints', amount: 2 }], outcomes: [{ kind: 'heal_leader', amount: 95, text: '守夜到天明，主将恢复约 50% 生元。' }], loreUnlock: 'event_ruined_mountain_shrine' },
     ],
   },
 ] as const satisfies readonly TrialEventDefinition[]

@@ -182,6 +182,7 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
     playedCardIds: [],
     talismanCardStreak: 0,
     firstCardShieldGranted: false,
+    meridianGuardTriggered: false,
     lastSpiritActionAtMs: -1_000_000_000,
   }
   if (has('equipment_hundred_beast_circlet')) state.spiritBonds = [1, 1]
@@ -245,6 +246,15 @@ function applyIncoming(state: BattleState<CardRef>, sourceId: SourceId, target: 
   target.shield -= shieldAbsorbed
   target.hp = Math.max(0, target.hp - hpDamage)
   events.push({ type: 'damage', sourceId, targetId: target.id, amount: hpDamage, shieldAbsorbed, atMs: state.timeMs })
+  if (target.id === 'leader' && !state.meridianGuardTriggered && target.hp > 0 && target.hp * 100 <= target.maxHp * 30) {
+    const consumableId = 'consumable_meridian_guard_pill'
+    if ((state.consumableUses[consumableId] ?? 0) > 0) {
+      state.meridianGuardTriggered = true
+      state.consumableUses[consumableId] -= 1
+      addShield(state, consumableId, target, 40, events)
+      events.push({ type: 'consumable_used', consumableId, remainingUses: state.consumableUses[consumableId], targetId: target.id, atMs: state.timeMs })
+    }
+  }
   if (target.id === 'paper_armor_envoy' && !target.summonTriggered && target.hp > 0 && target.hp * 100 <= target.maxHp * 60) {
     target.summonTriggered = true
     const summoned = makeUnit(PROTOTYPE_CONTENT.enemyDefinitions.paper_child)
