@@ -106,6 +106,7 @@ describe('M4 campaign content and sessions', () => {
     }
     const settled = settleStage(save, withStatus(createStageSession(save, 4), 'victory'))
     expect(settled.campaign.lastFailure).toEqual(save.campaign.lastFailure)
+    expect(settled.campaign.mode).toBe('paused')
   })
 
   it('returns to the blocked next stage after an explicit advance action', () => {

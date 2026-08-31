@@ -173,7 +173,7 @@ export function settleStage(save: PlayerSave, session: StageSession): PlayerSave
     ...next.campaign,
     highestClearedStage: highest,
     stableStage: Math.max(next.campaign.stableStage, highest),
-    mode: stage.isRealmGate ? 'paused' : next.campaign.mode,
+    mode: stage.isRealmGate ? 'paused' : next.campaign.mode === 'farm' && next.campaign.lastFailure ? 'paused' : next.campaign.mode,
     trialUnlocked: next.campaign.trialUnlocked || stage.isRealmGate,
     battleSequence: next.campaign.battleSequence + 1,
     settledRewardSourceIds: [...next.campaign.settledRewardSourceIds, sourceId],
