@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
-import { createBattle, getCardAvailability, getEffectiveCardCost, transitionBattle } from './battle'
-import type { BattleContent, BattleState, BuildId, CardId, EnemyId } from './types'
+import { createBattle, createBattleCardInstance, getCardAvailability, getEffectiveCardCost, transitionBattle } from './battle'
+import type { BattleContent, BattleSetup, BattleState, BuildId, CardId, EnemyId } from './types'
 
 function withHand(state: BattleState, hand: CardId[], energy = 10): BattleState {
   return { ...state, hand, deck: [], discard: [], energy }
@@ -269,5 +269,69 @@ describe('deterministic M2 battle', () => {
     const envoyResult = transitionBattle(withHand(envoy.state, ['guiding_edge']), { type: 'play_card', cardId: 'guiding_edge' }, envoy.content)
     expect(envoyResult.events).toContainEqual(expect.objectContaining({ type: 'unit_summoned', unitId: 'paper_child' }))
     expect(envoyResult.state.enemies).toHaveLength(2)
+  })
+})
+
+describe('battle card instances', () => {
+  function setup(hand: BattleSetup['hand']): BattleSetup {
+    return { buildId: 'pure_sword', deck: [], hand, discard: [] }
+  }
+
+  it('keeps duplicate cards addressable by instance and reports both ids', () => {
+    const first = createBattleCardInstance('guiding_edge', 'edge-1')
+    const second = createBattleCardInstance('guiding_edge', 'edge-2', true)
+    const state = createBattle(30, PROTOTYPE_CONTENT, { ...setup([first, second]), deck: [createBattleCardInstance('hidden_edge', 'edge-draw')] })
+    expect(state.hand).toEqual([first, second])
+    expect(getEffectiveCardCost(state, PROTOTYPE_CONTENT.cards.guiding_edge, second)).toBe(0)
+
+    const result = transitionBattle(state, { type: 'play_card', cardInstanceId: 'edge-2' })
+    expect(result.state.hand.map((card) => card.instanceId)).toContain(first.instanceId)
+    expect(result.state.hand.map((card) => card.instanceId)).not.toContain(second.instanceId)
+    expect(result.events).toContainEqual(expect.objectContaining({ type: 'card_played', cardId: 'guiding_edge', instanceId: 'edge-2' }))
+  })
+
+  it('exhausts an instance for this battle and restores it from setup on restart', () => {
+    const exhausted = createBattleCardInstance('guiding_edge', 'edge-exhaust', false, true)
+    const state = createBattle(31, PROTOTYPE_CONTENT, setup([exhausted]))
+    const played = transitionBattle(state, { type: 'play_card', cardInstanceId: exhausted.instanceId }).state
+    expect(played.discard).toEqual([])
+    expect(played.hand).toEqual([])
+
+    const restarted = transitionBattle(played, { type: 'restart' }).state
+    expect(restarted.hand).toEqual([exhausted])
+  })
+
+  it('uses charged treasures and limited consumables through the same transition', () => {
+    const state = createBattle(32, PROTOTYPE_CONTENT, {
+      buildId: 'pure_sword', cardInstances: [createBattleCardInstance('guiding_edge', 'edge-use')],
+      treasureId: 'treasure_crescent_sword_case', treasureCharge: 3, treasureMaxCharge: 3,
+      consumableIds: ['consumable_spring_return_pill'], consumableUses: { consumable_spring_return_pill: 1 },
+    })
+    const treasure = transitionBattle(state, { type: 'use_treasure' })
+    expect(treasure.state.treasureCharge).toBe(0)
+    expect(treasure.events).toContainEqual(expect.objectContaining({ type: 'treasure_used', treasureId: 'treasure_crescent_sword_case' }))
+    treasure.state.leader.hp = 100
+    const pill = transitionBattle(treasure.state, { type: 'use_consumable', slot: 0 })
+    expect(pill.state.consumableUses.consumable_spring_return_pill).toBe(0)
+    expect(pill.events).toContainEqual(expect.objectContaining({ type: 'consumable_used', consumableId: 'consumable_spring_return_pill' }))
+  })
+
+  it('moves the Huai Matriarch through its three deterministic phases', () => {
+    const content: BattleContent = { ...PROTOTYPE_CONTENT, enemies: [PROTOTYPE_CONTENT.enemyDefinitions.ancient_huai_matriarch] }
+    const state = createBattle(33, content, { cardInstances: [createBattleCardInstance('guiding_edge', 'boss-edge')] })
+    state.enemies[0].hp = 1_200
+    const reflection = transitionBattle(state, { type: 'play_card', cardInstanceId: 'boss-edge' }, content)
+    expect(reflection.events).toContainEqual(expect.objectContaining({ type: 'boss_phase_changed', phase: 'reflection' }))
+    const finalState = { ...reflection.state, enemies: reflection.state.enemies.map((enemy) => ({ ...enemy, hp: 200 })), hand: [createBattleCardInstance('guiding_edge', 'boss-edge-2')], deck: [], discard: [], energy: 10 }
+    const final = transitionBattle(finalState, { type: 'play_card', cardInstanceId: 'boss-edge-2' }, content)
+    expect(final.state.bossDominantTag).toBeDefined()
+    expect(final.state.bossPhase).toBe('huai_trial')
+  })
+
+  it.each(Object.keys(PROTOTYPE_CONTENT.builds) as BuildId[])('can finish the Matriarch with %s autoplay', (buildId) => {
+    const content: BattleContent = { ...PROTOTYPE_CONTENT, enemies: [PROTOTYPE_CONTENT.enemyDefinitions.ancient_huai_matriarch] }
+    let state = transitionBattle(createBattle(34, content, buildId), { type: 'set_autoplay', enabled: true }, content).state
+    for (let step = 0; step < 1_200 && state.status === 'active'; step += 1) state = transitionBattle(state, { type: 'advance', elapsedMs: 250 }, content).state
+    expect(state.status).toBe('victory')
   })
 })

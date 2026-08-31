@@ -2,12 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { AFFIXES, COLLECTION, COLLECTION_BY_ID, CONSUMABLES, EQUIPMENT, EQUIPMENT_SLOTS, TREASURES, type CollectionCategory, type EquipmentSlot } from './content/collection'
 import { PROTOTYPE_CONTENT } from './content/prototype'
-import { createBattle, getCardAvailability, transitionBattle } from './game/battle'
-import type { BattleCommand, BattleEvent, BattleState, BuildId, CardId, ComboId, UnitId, UnitState } from './game/types'
+import { LORE_ENTRIES } from './content/lore'
+import { createBattle, getCardAvailability, getCardId, isBattleCardInstance, transitionBattle } from './game/battle'
+import type { BattleCardInstance, BattleCommand, BattleEvent, BattleState, BuildId, CardId, ComboId, UnitId, UnitState } from './game/types'
 import { advanceStageSession, createStageSession, nextCampaignStage, setCampaignMode, settleStage, type PendingOfflineSettlement, type StageSession } from './game/campaign'
-import { ESSENCE_NAMES, REROLL_ESSENCE_COST, attachOfflineSettlement, battleContentFromSave, canEquipBuild, claimOfflineSettlement, createPlayerSave, equipBuild, equipItem, loadPlayerSave, markActive, parseSave, previewReroll, resetLevel, resolveReroll, storePlayerSave, upgrade, upgradeCost, type PlayerSave } from './state/player'
+import { createTrial, createTrialBattle, createTrialSettlement, resolveTrialBattle, transitionTrial, type TrialCommand, type TrialRun } from './game/trial'
+import { ESSENCE_NAMES, REROLL_ESSENCE_COST, attachOfflineSettlement, attachTrialRun, attachTrialSettlement, battleContentFromSave, canEquipBuild, claimOfflineSettlement, claimTrialSettlement, createPlayerSave, equipBuild, equipItem, loadPlayerSave, markActive, markLoreRead, parseSave, previewReroll, resetLevel, resolveReroll, storePlayerSave, upgrade, upgradeCost, type PlayerSave } from './state/player'
 import { PriorityList } from './ui/PriorityList'
 import { TravelPage } from './ui/TravelPage'
+import { TrialPage } from './ui/TrialPage'
 
 const INITIAL_SEED = 20_260_827
 const ASSET_ROOT = '/assets/pixel/'
@@ -15,8 +18,12 @@ const artFiles: Record<string, string> = {
   portrait_leader_01: 'portrait-leader-01.png', spirit_paper_bride: 'spirit-paper-bride.png', enemy_clay_idol: 'enemy-clay-idol.png',
   card_mountain_splitter: 'card-mountain-splitter.png', card_nine_heavens_edict: 'card-nine-heavens-edict.png', card_night_of_hundred_beasts: 'card-night-of-hundred-beasts.png',
   spirit_blade_tail_fox: 'spirit-blade-tail-fox.png', spirit_iron_beak_crane: 'spirit-iron-beak-crane.png', spirit_lantern_ghost: 'spirit-lantern-ghost.png', spirit_mountain_child: 'spirit-mountain-child.png', spirit_dream_tapir: 'spirit-dream-tapir.png',
-  enemy_shadow_civet: 'enemy-shadow-civet.png', enemy_paper_child: 'enemy-paper-child.png', enemy_headless_woodcutter: 'enemy-headless-woodcutter.png', enemy_borrowed_life_crone: 'enemy-borrowed-life-crone.png', enemy_hundred_eyed_branch: 'enemy-hundred-eyed-branch.png', enemy_paper_armor_envoy: 'enemy-paper-armor-envoy.png',
+  enemy_shadow_civet: 'enemy-shadow-civet.png', enemy_paper_child: 'enemy-paper-child.png', enemy_headless_woodcutter: 'enemy-headless-woodcutter.png', enemy_borrowed_life_crone: 'enemy-borrowed-life-crone.png', enemy_hundred_eyed_branch: 'enemy-hundred-eyed-branch.png', enemy_paper_armor_envoy: 'enemy-paper-armor-envoy.png', boss_ancient_huai_matriarch: 'boss-ancient-huai-matriarch.png',
   card_guiding_edge: 'card-guiding-edge.png', card_fire_talisman: 'card-fire-talisman.png', card_call_true_name: 'card-call-true-name.png',
+  weapon_azure_wind_sword: 'weapon-azure-wind-sword.png', weapon_cinnabar_brush: 'weapon-cinnabar-brush.png', weapon_spirit_bell: 'weapon-spirit-bell.png',
+  technique_hidden_edge_art: 'technique-hidden-edge-art.png', technique_edict_talisman_codex: 'technique-edict-talisman-codex.png', technique_hundred_spirit_codex: 'technique-hundred-spirit-codex.png',
+  equipment_hidden_edge_jade: 'equipment-hidden-edge-jade.png', equipment_thunder_coin: 'equipment-thunder-coin.png', equipment_paired_bronze_bell: 'equipment-paired-bronze-bell.png',
+  treasure_crescent_sword_case: 'treasure-crescent-sword-case.png', treasure_mountain_river_inkstone: 'treasure-mountain-river-inkstone.png', treasure_soul_summoning_banner: 'treasure-soul-summoning-banner.png',
 }
 const comboNames: Record<ComboId, string> = { flying_sword_seal: '飞剑镇符', spirit_edict: '灵使敕令', dual_spirit_sword: '双灵剑阵' }
 const categoryNames: Record<CollectionCategory, string> = { weapon: '武器', equipment: '装备', technique: '功法', card: '术法', treasure: '法宝', consumable: '配方', spirit: '妖灵' }
@@ -28,10 +35,11 @@ const names: Record<string, string> = {
   ...Object.fromEntries(Object.values(PROTOTYPE_CONTENT.spirits).map((item) => [item.id, item.name])),
   ...Object.fromEntries(Object.values(PROTOTYPE_CONTENT.enemyDefinitions).map((item) => [item.id, item.name])),
   ...Object.fromEntries(Object.values(PROTOTYPE_CONTENT.cards).map((item) => [item.id, item.name])),
+  ...Object.fromEntries(Object.values(COLLECTION_BY_ID).map((item) => [item.id, item.name])),
 }
 
 interface AppState { battle: BattleState; events: BattleEvent[] }
-type Page = 'travel' | 'battle' | 'loadout' | 'codex' | 'save'
+type Page = 'travel' | 'trial' | 'battle' | 'loadout' | 'codex' | 'save'
 
 function UnitCard({ unit, bond, enemy = false, selectable = false, onSelect }: { unit: UnitState; bond?: number; enemy?: boolean; selectable?: boolean; onSelect?: () => void }) {
   const art = unit.artKey ? artFiles[unit.artKey] : undefined
@@ -50,6 +58,9 @@ function formatEvent(event: BattleEvent) {
     case 'battle_started': return [time, `切换「${PROTOTYPE_CONTENT.builds[event.buildId].name}」，斗法开始。`]
     case 'card_drawn': return [time, `抽取「${names[event.cardId]}」。`]
     case 'card_played': return [time, `${event.automatic ? '自动施展' : '施展'}「${names[event.cardId]}」。`]
+    case 'card_exhausted': return [time, `「${names[event.cardId]}」本战斗耗用。`]
+    case 'treasure_used': return [time, `法宝「${event.treasureId}」发动，剩余充能 ${event.remainingCharge}。`]
+    case 'consumable_used': return [time, `使用「${event.consumableId}」，剩余 ${event.remainingUses} 次。`]
     case 'damage': return [time, `${names[event.sourceId]}对${names[event.targetId]}造成 ${event.amount} 伤害${event.shieldAbsorbed ? `，护盾抵消 ${event.shieldAbsorbed}` : ''}。`]
     case 'heal': return [time, `${names[event.sourceId]}为${names[event.targetId]}恢复 ${event.amount} 生元。`]
     case 'shield': return [time, `${names[event.sourceId]}为${names[event.targetId]}赋予 ${event.amount} 护盾。`]
@@ -60,6 +71,7 @@ function formatEvent(event: BattleEvent) {
     case 'enemy_buff': return [time, `${names[event.targetId]}获得强化。`]
     case 'wave_started': return [time, `第 ${event.waveNumber} 波来袭。`]
     case 'battle_timeout': return [time, '斗法久持不下，判定失败。']
+    case 'boss_phase_changed': return [time, `槐姥进入「${event.phase === 'rooted' ? '盘根' : event.phase === 'reflection' ? '摄魄' : '槐劫'}」。`]
     case 'combo_triggered': return [time, `连携「${comboNames[event.comboId]}」触发。`]
     case 'battle_ended': return [time, event.result === 'victory' ? '泥胎崩裂，试法告捷。' : '心脉俱损，试法失败。']
     case 'message': return [time, event.text]
@@ -84,6 +96,7 @@ function LoadoutPage({ save, setSave, enterBattle }: { save: PlayerSave; setSave
 }
 
 function CodexPage({ save, setSave }: { save: PlayerSave; setSave: (next: PlayerSave) => void }) {
+  const [view, setView] = useState<'collection' | 'lore'>('collection')
   const [category, setCategory] = useState<CollectionCategory>('weapon')
   const items = COLLECTION.filter((item) => item.category === category)
   const [selectedId, setSelectedId] = useState(items[0].id)
@@ -92,11 +105,13 @@ function CodexPage({ save, setSave }: { save: PlayerSave; setSave: (next: Player
   const owned = save.ownedIds.includes(selected.id)
   const cost = upgradeCost(selected, level)
   const pending = save.pendingReroll?.equipmentId === selected.id ? save.pendingReroll : undefined
+  if (view === 'lore') return <main className="paper-page codex-page"><header className="page-heading"><div><small>BESTIARY & TALES</small><h2>志怪录</h2></div><p>{save.discoveredLoreIds.length} / {LORE_ENTRIES.length} 已发现</p></header><nav className="category-tabs codex-view-tabs" aria-label="图鉴视图"><button type="button" className="is-active" onClick={() => setView('lore')}>志怪录</button><button type="button" onClick={() => setView('collection')}>万象图鉴</button></nav><section className="lore-grid">{LORE_ENTRIES.map((entry) => { const discovered = save.discoveredLoreIds.includes(entry.id); const read = save.readLoreIds.includes(entry.id); return <button type="button" key={entry.id} className={`lore-card ${discovered ? 'is-discovered' : 'is-locked'} ${read ? '' : 'is-unread'}`} onClick={() => discovered && setSave(markLoreRead(save, entry.id))}><span>{entry.kind === 'enemy' ? entry.rank === 'boss' ? '首领' : entry.rank === 'elite' ? '精英' : '异物' : '怪谈'}</span>{discovered && entry.artKey && <img src={`${ASSET_ROOT}${artFiles[entry.artKey] ?? ''}`} alt="" />}<strong>{discovered ? entry.name : '未识之物'}</strong><small>{discovered ? entry.title : '在古道中相遇后解锁'}</small><p>{discovered ? entry.lore : '墨雾遮住了这段记载。'}</p>{discovered && !read && <em>新发现 · 点击阅览</em>}</button> })}</section></main>
   return <main className="paper-page codex-page">
     <header className="page-heading"><div><small>CATALOGUE OF ODDITIES</small><h2>万象图鉴</h2></div><p>{save.ownedIds.length} / {COLLECTION.length} 已收录</p></header>
+    <nav className="category-tabs codex-view-tabs" aria-label="图鉴视图"><button type="button" className="is-active" onClick={() => setView('collection')}>万象图鉴</button><button type="button" onClick={() => setView('lore')}>志怪录 <small>{save.discoveredLoreIds.length}/{LORE_ENTRIES.length}</small></button></nav>
     <nav className="category-tabs" aria-label="收藏类别">{(Object.keys(categoryNames) as CollectionCategory[]).map((id) => <button type="button" key={id} className={category === id ? 'is-active' : ''} onClick={() => { setCategory(id); setSelectedId(COLLECTION.find((item) => item.category === id)!.id) }}>{categoryNames[id]}<small>{COLLECTION.filter((item) => item.category === id).length}</small></button>)}</nav>
     <div className="codex-layout"><section className="collection-grid">{items.map((item) => { const itemOwned = save.ownedIds.includes(item.id); return <button type="button" key={item.id} className={`collection-card rarity-${item.rarity} ${selected.id === item.id ? 'is-active' : ''} ${itemOwned ? '' : 'is-locked'}`} onClick={() => setSelectedId(item.id)}><span>{categoryNames[item.category]} · {itemOwned ? rarityNames[item.rarity] : '未收录'}</span><i aria-hidden="true">{itemOwned ? item.name.at(0) : '？'}</i><strong>{itemOwned ? item.name : '未知收藏'}</strong><small>{itemOwned ? `Lv.${save.levels[item.id] ?? 1} / 10` : item.unlockSource}</small></button> })}</section>
-      <aside className="collection-detail"><span className="rarity-mark">{categoryNames[selected.category]} · {rarityNames[selected.rarity]}</span><h3>{selected.name}</h3><div className="detail-level"><strong>Lv.{level}</strong><span>/ 10</span></div><p className="effect-copy">{selected.summary}</p><div className="tag-list">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div><blockquote>{selected.lore}</blockquote><dl><div><dt>来源</dt><dd>{selected.unlockSource}</dd></div><div><dt>重复转化</dt><dd>{selected.duplicateEssence} {ESSENCE_NAMES[selected.essenceType]}</dd></div></dl>
+      <aside className="collection-detail"><span className="rarity-mark">{categoryNames[selected.category]} · {rarityNames[selected.rarity]}</span>{selected.artKey && <div className="collection-detail-art"><img src={`${ASSET_ROOT}${artFiles[selected.artKey] ?? `${selected.artKey.replaceAll('_', '-')}.png`}`} alt="" /></div>}<h3>{selected.name}</h3><div className="detail-level"><strong>Lv.{level}</strong><span>/ 10</span></div><p className="effect-copy">{selected.summary}</p><div className="tag-list">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div><blockquote>{selected.lore}</blockquote><dl><div><dt>来源</dt><dd>{selected.unlockSource}</dd></div><div><dt>重复转化</dt><dd>{selected.duplicateEssence} {ESSENCE_NAMES[selected.essenceType]}</dd></div></dl>
         <div className="detail-actions">{owned ? <><button type="button" disabled={level >= 10 || save.resources.spiritSand < cost.spiritSand || save.resources[cost.essenceType] < cost.essence} onClick={() => setSave(upgrade(save, selected.id))}>{level >= 10 ? '已臻圆满' : `升级 · ${cost.spiritSand} 灵砂 / ${cost.essence} ${ESSENCE_NAMES[cost.essenceType]}`}</button><button type="button" disabled={level === 1} onClick={() => setSave(resetLevel(save, selected.id))}>免费重置</button></> : <p className="locked-note">继续游历以收录此物。</p>}</div>
         {owned && selected.category === 'equipment' && <section className="affix-box"><h4>附加词条</h4><p>{(save.equipmentAffixes[selected.id] ?? []).map((id) => `${AFFIXES[id].name} +${AFFIXES[id].value}${AFFIXES[id].suffix}`).join(' · ')}</p>{pending ? <div className="reroll-preview"><small>候选</small><p>{pending.affixes.map((id) => `${AFFIXES[id].name} +${AFFIXES[id].value}${AFFIXES[id].suffix}`).join(' · ')}</p><button type="button" onClick={() => setSave(resolveReroll(save, true))}>确认替换</button><button type="button" onClick={() => setSave(resolveReroll(save, false))}>保留旧词条</button></div> : <button type="button" disabled={save.resources.artifactEssence < REROLL_ESSENCE_COST} onClick={() => setSave(previewReroll(save, selected.id))}>预览重铸 · {REROLL_ESSENCE_COST} 器华</button>}</section>}
       </aside></div>
@@ -113,7 +128,7 @@ function SavePage({ save, setSave, onNewJourney }: { save: PlayerSave; setSave: 
 
 function App() {
   const [save, setSave] = useState(loadPlayerSave)
-  const [page, setPage] = useState<Page>('travel')
+  const [page, setPage] = useState<Page>(() => save.trialRun || save.pendingTrialSettlement ? 'trial' : 'travel')
   const [app, setApp] = useState<AppState>(() => ({ battle: createBattle(INITIAL_SEED, battleContentFromSave(save), save.loadout.buildId), events: [{ type: 'battle_started', seed: INITIAL_SEED, buildId: save.loadout.buildId, atMs: 0 }] }))
   const [campaignSession, setCampaignSession] = useState<StageSession>()
   const [visible, setVisible] = useState(() => !document.hidden)
@@ -121,6 +136,11 @@ function App() {
   const [offlineError, setOfflineError] = useState<string>()
   const [speed, setSpeed] = useState(1)
   const [targetingCard, setTargetingCard] = useState<CardId>()
+  const [targetingInstanceId, setTargetingInstanceId] = useState<string>()
+  const [trialRun, setTrialRun] = useState<TrialRun | undefined>(() => save.trialRun)
+  const [trialBattle, setTrialBattle] = useState<BattleState<BattleCardInstance>>()
+  const [trialEvents, setTrialEvents] = useState<BattleEvent[]>([])
+  const [trialError, setTrialError] = useState<string>()
   const battleContent = useMemo(() => battleContentFromSave(save), [save])
   const saveRef = useRef(save)
 
@@ -168,10 +188,10 @@ function App() {
     return () => { activeWorker?.terminate(); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', onPageHide) }
   }, [])
   useEffect(() => {
-    if (!visible || offlineBusy || campaignSession || save.campaign.mode === 'paused' || save.campaign.pendingOfflineSettlement) return
+    if (!visible || offlineBusy || campaignSession || trialRun || save.trialRun || save.pendingTrialSettlement || save.campaign.mode === 'paused' || save.campaign.pendingOfflineSettlement) return
     const timer = window.setTimeout(() => setCampaignSession(createStageSession(save, nextCampaignStage(save))), 0)
     return () => window.clearTimeout(timer)
-  }, [campaignSession, offlineBusy, save, visible])
+  }, [campaignSession, offlineBusy, save, trialRun, visible])
   useEffect(() => {
     if (!visible || !campaignSession || campaignSession.status !== 'active' || save.campaign.mode === 'paused') return
     const timer = window.setInterval(() => setCampaignSession((current) => current ? advanceStageSession(current, 250 * speed, save) : current), 250)
@@ -184,6 +204,15 @@ function App() {
     return () => window.clearTimeout(timer)
   }, [campaignSession, page])
   const dispatch = useCallback((command: BattleCommand) => {
+    if (trialBattle) {
+      setTrialBattle((current) => {
+        if (!current) return current
+        const result = transitionBattle(current, command, battleContent)
+        setTrialEvents((events) => [...events, ...result.events])
+        return result.state
+      })
+      return
+    }
     if (campaignSession) {
       setCampaignSession((current) => {
         if (!current) return current
@@ -194,9 +223,10 @@ function App() {
       return
     }
     setApp((current) => { const result = transitionBattle(current.battle, command, battleContent); return { battle: result.state, events: command.type === 'restart' ? result.events : [...current.events, ...result.events].slice(-80) } })
-  }, [battleContent, campaignSession, save])
-  useEffect(() => { if (campaignSession || app.battle.status !== 'active' || page !== 'battle') return; const timer = window.setInterval(() => dispatch({ type: 'advance', elapsedMs: 250 * speed }), 250); return () => window.clearInterval(timer) }, [app.battle.status, campaignSession, dispatch, page, speed])
-  useEffect(() => { if (!targetingCard) return; const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape') setTargetingCard(undefined) }; window.addEventListener('keydown', cancel); return () => window.removeEventListener('keydown', cancel) }, [targetingCard])
+  }, [battleContent, campaignSession, save, trialBattle])
+  useEffect(() => { if (!trialBattle || trialBattle.status !== 'active' || page !== 'battle') return; const timer = window.setInterval(() => dispatch({ type: 'advance', elapsedMs: 250 * speed }), 250); return () => window.clearInterval(timer) }, [dispatch, page, speed, trialBattle])
+  useEffect(() => { if (campaignSession || trialBattle || app.battle.status !== 'active' || page !== 'battle') return; const timer = window.setInterval(() => dispatch({ type: 'advance', elapsedMs: 250 * speed }), 250); return () => window.clearInterval(timer) }, [app.battle.status, campaignSession, dispatch, page, speed, trialBattle])
+  useEffect(() => { if (!targetingCard) return; const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape') { setTargetingCard(undefined); setTargetingInstanceId(undefined) } }; window.addEventListener('keydown', cancel); return () => window.removeEventListener('keydown', cancel) }, [targetingCard])
 
   const settleFinishedBattle = () => {
     if (campaignSession && campaignSession.status !== 'active') {
@@ -206,32 +236,77 @@ function App() {
     setTargetingCard(undefined)
     setPage('travel')
   }
-  const startBattle = (stageNumber = nextCampaignStage(save)) => { if (!campaignSession || campaignSession.stageNumber !== stageNumber || campaignSession.status !== 'active') setCampaignSession(createStageSession(save, stageNumber)); setTargetingCard(undefined); setPage('battle') }
-  const retryBlocked = (stageNumber: number) => { const next = setCampaignMode(save, 'advance'); setSave(next); setCampaignSession(createStageSession(next, stageNumber)); setTargetingCard(undefined); setPage('battle') }
-  const chooseBuild = (buildId: BuildId) => { const next = equipBuild(save, buildId); if (next === save) return; setSave(next); if (campaignSession) setCampaignSession(createStageSession(next, campaignSession.stageNumber)); else { const battle = createBattle(INITIAL_SEED, battleContentFromSave(next), buildId); setApp({ battle, events: [{ type: 'battle_started', seed: INITIAL_SEED, buildId, atMs: 0 }] }) } setTargetingCard(undefined) }
+  const persistTrial = (next: TrialRun) => { setTrialRun(next); setSave((current) => attachTrialRun(current, next)) }
+  const beginTrial = () => {
+    if (save.pendingTrialSettlement && !trialRun && !save.trialRun) { setPage('trial'); return }
+    const next = trialRun ?? save.trialRun ?? createTrial(save.campaign.campaignSeed + save.campaign.battleSequence * 1_009, save)
+    persistTrial(next)
+    setTrialError(undefined)
+    setPage('trial')
+  }
+  const startTrialBattle = () => {
+    if (!trialRun || trialRun.pending?.kind !== 'battle') return
+    setTrialBattle(createTrialBattle(trialRun, save))
+    setTrialEvents([])
+    setTrialError(undefined)
+    setPage('battle')
+  }
+  const settleTrialBattle = () => {
+    if (!trialRun || !trialBattle || trialBattle.status === 'active') return
+    const result = resolveTrialBattle(trialRun, trialBattle, trialEvents)
+    setTrialBattle(undefined)
+    setTrialEvents([])
+    setTrialError(result.error)
+    if (result.error) return
+    if (result.run.status === 'active') persistTrial(result.run)
+    else { setTrialRun(undefined); setSave((current) => attachTrialSettlement(current, createTrialSettlement(result.run))) }
+    setPage('trial')
+  }
+  const applyTrialCommand = (command: TrialCommand) => {
+    if (!trialRun) return
+    const result = transitionTrial(trialRun, command)
+    if (result.error) { setTrialError(result.error); return }
+    setTrialError(undefined)
+    if (result.run.status === 'active') persistTrial(result.run)
+    else { setTrialRun(undefined); setSave((current) => attachTrialSettlement(current, createTrialSettlement(result.run))) }
+  }
+  const retreatTrial = () => {
+    if (!trialRun) return
+    const result = transitionTrial(trialRun, { type: 'retreat' })
+    if (result.error) { setTrialError(result.error); return }
+    setTrialRun(undefined)
+    setSave((current) => attachTrialSettlement(current, createTrialSettlement(result.run, 'retreat')))
+    setTrialError(undefined)
+  }
+  const claimTrial = () => { setSave((current) => claimTrialSettlement(current, Date.now())); setTrialRun(undefined); setTrialError(undefined); setPage('travel') }
+  const startBattle = (stageNumber = nextCampaignStage(save)) => { if (trialBattle) return; if (!campaignSession || campaignSession.stageNumber !== stageNumber || campaignSession.status !== 'active') setCampaignSession(createStageSession(save, stageNumber)); setTargetingCard(undefined); setTargetingInstanceId(undefined); setPage('battle') }
+  const retryBlocked = (stageNumber: number) => { if (trialBattle) return; const next = setCampaignMode(save, 'advance'); setSave(next); setCampaignSession(createStageSession(next, stageNumber)); setTargetingCard(undefined); setTargetingInstanceId(undefined); setPage('battle') }
+  const chooseBuild = (buildId: BuildId) => { if (trialBattle) return; const next = equipBuild(save, buildId); if (next === save) return; setSave(next); if (campaignSession) setCampaignSession(createStageSession(next, campaignSession.stageNumber)); else { const battle = createBattle(INITIAL_SEED, battleContentFromSave(next), buildId); setApp({ battle, events: [{ type: 'battle_started', seed: INITIAL_SEED, buildId, atMs: 0 }] }) } setTargetingCard(undefined); setTargetingInstanceId(undefined) }
   const changeMode = (mode: PlayerSave['campaign']['mode']) => { setCampaignSession(undefined); setSave((current) => setCampaignMode(current, mode)) }
-  const navigate = (nextPage: Page) => { if (nextPage !== 'battle' && campaignSession && !campaignSession.battle.autoplay) dispatch({ type: 'set_autoplay', enabled: true }); if (nextPage !== 'battle' && campaignSession?.status !== 'active') settleFinishedBattle(); setPage(nextPage) }
-  const newJourney = () => { const next = createPlayerSave(Date.now()); setSave(next); setCampaignSession(undefined); setApp({ battle: createBattle(INITIAL_SEED, battleContentFromSave(next), next.loadout.buildId), events: [] }); setPage('travel') }
-  const battle = campaignSession?.battle ?? app.battle
-  const activeEvents = campaignSession?.events ?? app.events
+  const navigate = (nextPage: Page) => { if (trialBattle && nextPage !== 'battle') { if (trialBattle.status !== 'active') settleTrialBattle(); return } if (nextPage !== 'battle' && campaignSession && !campaignSession.battle.autoplay) dispatch({ type: 'set_autoplay', enabled: true }); if (nextPage !== 'battle' && campaignSession?.status !== 'active') settleFinishedBattle(); setPage(nextPage) }
+  const newJourney = () => { const next = createPlayerSave(Date.now()); setSave(next); setCampaignSession(undefined); setTrialRun(undefined); setTrialBattle(undefined); setApp({ battle: createBattle(INITIAL_SEED, battleContentFromSave(next), next.loadout.buildId), events: [] }); setPage('travel') }
+  const battle = trialBattle ?? campaignSession?.battle ?? app.battle
+  const activeEvents: BattleEvent[] = trialBattle ? trialEvents : campaignSession?.events ?? app.events
   const build = battleContent.builds[battle.buildId]
   const enemy = battle.enemies.find((unit) => unit.hp > 0) ?? battle.enemies[0]
-  const clickCard = (cardId: CardId) => battleContent.cards[cardId].targetRule === 'chosen_spirit' ? setTargetingCard(cardId) : dispatch({ type: 'play_card', cardId })
-  const chooseSpiritTarget = (targetId: UnitId) => { if (!targetingCard) return; dispatch({ type: 'play_card', cardId: targetingCard, targetId }); setTargetingCard(undefined) }
+  const finishBattle = trialBattle ? settleTrialBattle : settleFinishedBattle
+  const clickCard = (cardId: CardId, instanceId?: string) => { setTargetingInstanceId(instanceId); if (battleContent.cards[cardId].targetRule === 'chosen_spirit') setTargetingCard(cardId); else dispatch({ type: 'play_card', cardId, cardInstanceId: instanceId }) }
+  const chooseSpiritTarget = (targetId: UnitId) => { if (!targetingCard) return; dispatch({ type: 'play_card', cardId: targetingCard, cardInstanceId: targetingInstanceId, targetId }); setTargetingCard(undefined); setTargetingInstanceId(undefined) }
 
   return <div className="game-shell">
-    <header className="topbar"><div className="brand-lockup"><span className="brand-seal" aria-hidden="true">問</span><div><p>槐阴古道 · 炼气试演</p><h1>山海问道</h1></div></div><nav className="main-nav" aria-label="主要页面">{([['travel', '游历'], ['battle', '斗法'], ['loadout', '行囊'], ['codex', '图鉴'], ['save', '存档']] as [Page, string][]).map(([id, label]) => <button type="button" key={id} className={page === id ? 'is-active' : ''} onClick={() => navigate(id)}>{label}</button>)}</nav>{page === 'battle' && <div className="battle-controls"><span className="seed-mark">{campaignSession ? `第 ${campaignSession.stageNumber} 关 · ${campaignSession.waveIndex + 1} 波` : `劫数 ${battle.seed}`}</span><div className="speed-control" aria-label="战斗速度">{[1, 2, 4].map((value) => <button key={value} type="button" className={speed === value ? 'is-active' : ''} onClick={() => setSpeed(value)}>{value}×</button>)}</div><button type="button" className={battle.autoplay ? 'autoplay is-active' : 'autoplay'} onClick={() => dispatch({ type: 'set_autoplay', enabled: !battle.autoplay })}>{battle.autoplay ? '自动 · 开' : '自动 · 关'}</button><button type="button" className="restart" onClick={() => dispatch({ type: 'restart' })}>重演此关</button></div>}</header>
+    <header className="topbar"><div className="brand-lockup"><span className="brand-seal" aria-hidden="true">問</span><div><p>槐阴古道 · 炼气试演</p><h1>山海问道</h1></div></div><nav className="main-nav" aria-label="主要页面">{([['travel', '游历'], ...(save.campaign.trialUnlocked || trialRun || save.pendingTrialSettlement ? [['trial', '劫境'] as [Page, string]] : []), ['battle', '斗法'], ['loadout', '行囊'], ['codex', '图鉴'], ['save', '存档']] as [Page, string][]).map(([id, label]) => <button type="button" key={id} className={page === id ? 'is-active' : ''} onClick={() => navigate(id)}>{label}</button>)}</nav>{page === 'battle' && <div className="battle-controls"><span className="seed-mark">{trialBattle ? `劫境 · ${trialRun?.battleSequence ?? 0} 战` : campaignSession ? `第 ${campaignSession.stageNumber} 关 · ${campaignSession.waveIndex + 1} 波` : `劫数 ${battle.seed}`}</span><div className="speed-control" aria-label="战斗速度">{[1, 2, 4].map((value) => <button key={value} type="button" className={speed === value ? 'is-active' : ''} onClick={() => setSpeed(value)}>{value}×</button>)}</div><button type="button" className={battle.autoplay ? 'autoplay is-active' : 'autoplay'} onClick={() => dispatch({ type: 'set_autoplay', enabled: !battle.autoplay })}>{battle.autoplay ? '自动 · 开' : '自动 · 关'}</button><button type="button" className="restart" onClick={() => dispatch({ type: 'restart' })}>重演此关</button></div>}</header>
     <ResourceBar save={save} />
-    {page === 'travel' && <TravelPage save={save} session={campaignSession} offlineBusy={offlineBusy} offlineError={offlineError} onSetMode={changeMode} onEnterBattle={startBattle} onRetryBlocked={retryBlocked} onClaimOffline={() => setSave((current) => claimOfflineSettlement(current, Date.now()))} onOpenLoadout={() => setPage('loadout')} onRetryOffline={() => { setOfflineError(undefined); setSave((current) => markActive(current, Date.now())) }} />}
+    {page === 'travel' && <TravelPage save={save} session={campaignSession} offlineBusy={offlineBusy} offlineError={offlineError} onSetMode={changeMode} onEnterBattle={startBattle} onRetryBlocked={retryBlocked} onEnterTrial={beginTrial} onClaimOffline={() => setSave((current) => claimOfflineSettlement(current, Date.now()))} onOpenLoadout={() => setPage('loadout')} onRetryOffline={() => { setOfflineError(undefined); setSave((current) => markActive(current, Date.now())) }} />}
+    {page === 'trial' && <TrialPage save={save} run={trialRun ?? save.trialRun} pendingSettlement={save.pendingTrialSettlement} error={trialError} onStart={beginTrial} onMove={(tileId) => applyTrialCommand({ type: 'move', tileId })} onChoose={(optionId, targetCardInstanceId) => applyTrialCommand({ type: 'choose', optionId, targetCardInstanceId })} onStartBattle={startTrialBattle} onRetreat={retreatTrial} onClaim={claimTrial} />}
     {page === 'loadout' && <LoadoutPage save={save} setSave={setSave} enterBattle={startBattle} />}
     {page === 'codex' && <CodexPage save={save} setSave={setSave} />}
-    {page === 'save' && <SavePage save={save} setSave={(next) => { setSave(next); setCampaignSession(undefined); setPage('travel') }} onNewJourney={newJourney} />}
+    {page === 'save' && <SavePage save={save} setSave={(next) => { setSave(next); setCampaignSession(undefined); setTrialRun(next.trialRun); setTrialBattle(undefined); setPage(next.trialRun || next.pendingTrialSettlement ? 'trial' : 'travel') }} onNewJourney={newJourney} />}
     {page === 'battle' && <>
       <nav className="build-strip" aria-label="快捷构筑">{Object.values(PROTOTYPE_CONTENT.builds).map((preset) => { const available = canEquipBuild(save, preset.id); return <button key={preset.id} type="button" disabled={!available} className={`${preset.id === battle.buildId ? 'is-active' : ''} ${available ? '' : 'is-locked'}`} onClick={() => chooseBuild(preset.id)}><strong>{available ? preset.name : '未解阵谱'}</strong><span>{available ? preset.subtitle : '继续游历以解锁'}</span></button> })}</nav>
       <main className="battle-layout"><aside className="party-panel"><div className="panel-heading"><span>壹</span><div><small>PLAYER FORMATION</small><h2>修士阵</h2></div></div><UnitCard unit={battle.leader} /><div className="spirit-grid">{battle.spirits.map((spirit, index) => <UnitCard key={spirit.id} unit={spirit} bond={battle.spiritBonds[index]} selectable={Boolean(targetingCard && spirit.hp > 0)} onSelect={() => chooseSpiritTarget(spirit.id)} />)}</div>{targetingCard && <p className="target-note">为「{names[targetingCard]}」选择存活妖灵 · Esc 取消</p>}</aside>
-        <section className={`battle-table ${campaignSession && campaignSession.stageNumber > 20 ? 'region-roots' : campaignSession && campaignSession.stageNumber > 10 ? 'region-waystation' : ''}`}><div className="scene-vignette" aria-hidden="true" /><div className={`enemy-zone ${battle.enemies.length > 1 ? 'is-group' : ''}`}><p className="zone-label">槐阴异物</p><div className="enemy-card-grid">{battle.enemies.filter((unit) => unit.hp > 0).map((unit, index) => <UnitCard key={`${unit.id}-${index}`} unit={unit} enemy />)}</div></div><div className="battle-meter"><div className="resource-orb sword"><span>剑意</span><strong>{battle.swordIntent}</strong><small>/ {battle.swordIntentCap}</small></div><div className="energy-track"><div className="energy-label"><span>灵力</span><strong>{battle.energy}</strong><small>/ {battle.maxEnergy}</small></div><div className="energy-pips">{Array.from({ length: battle.maxEnergy }, (_, index) => <i key={index} className={index < battle.energy ? 'filled' : ''} />)}</div></div><div className="enemy-resources"><span>符印 <strong>{enemy.talismanMarks}</strong></span><span>灼烧 <strong>{enemy.burnStacks}</strong></span></div><p className={`time-mark ${battle.timeMs >= 60_000 ? 'is-warning' : ''}`}>{(battle.timeMs / 1_000).toFixed(1)} 秒{battle.timeMs >= 150_000 ? ' · 30秒警告' : battle.timeMs >= 60_000 ? ' · 久战' : ''}</p></div><div className="combo-row">{battle.activeCombos.map((id) => <span key={id}>{comboNames[id]}</span>)}</div>
-          <div className="hand-zone"><div className="hand-heading"><span>{PROTOTYPE_CONTENT.builds[battle.buildId].name} · {battleContent.weapons[build.weaponId].name}</span><span>手牌 {battle.hand.length}/4</span><span>牌库 {battle.deck.length}</span><span>弃牌 {battle.discard.length}</span></div><div className="hand-cards">{battle.hand.map((cardId) => { const card = battleContent.cards[cardId]; const availability = getCardAvailability(battle, card); const art = card.artKey ? artFiles[card.artKey] : undefined; const unavailable = availability.reason === 'battle_ended' ? '战斗已结束' : availability.reason === 'insufficient_energy' ? '灵力不足' : availability.reason === 'no_living_spirit' ? '无存活妖灵' : undefined; const hint = availability.reason === 'target_required' ? '点击后选择妖灵' : undefined; return <button type="button" key={cardId} className={`hand-card archetype-${card.tags[0]} ${targetingCard === cardId ? 'is-targeting' : ''} ${unavailable ? 'is-unavailable' : ''}`} disabled={Boolean(unavailable)} onClick={() => clickCard(cardId)}><span className="card-cost">{availability.cost}</span><span className="card-kind">{card.kind}</span><strong>{card.name}</strong><span className="card-illustration" aria-hidden="true">{art ? <img src={`${ASSET_ROOT}${art}`} alt="" /> : <i>{card.name.at(0)}</i>}</span><span className="card-text">{card.description}</span>{(unavailable || hint) && <span className="card-unavailable">{unavailable ?? hint}</span>}</button> })}</div></div>{battle.status !== 'active' && <div className={`battle-result ${battle.status}`} role="status"><span>{battle.status === 'victory' ? '破' : '败'}</span><h2>{battle.status === 'victory' ? '试法告捷' : '心脉受创'}</h2><p>{battle.status === 'victory' ? `「${PROTOTYPE_CONTENT.builds[battle.buildId].name}」已证可行。` : '此关未能通过，系统已记录失败原因。'}</p><div className="battle-result-actions"><button type="button" className="result-primary" onClick={settleFinishedBattle}>返回游历并结算</button><button type="button" onClick={() => dispatch({ type: 'restart' })}>重试本关</button></div></div>}
-        </section><aside className="intel-panel"><section className="build-summary"><div className="panel-heading compact"><span>贰</span><div><small>ACTIVE BUILD</small><h2>{PROTOTYPE_CONTENT.builds[battle.buildId].name}</h2></div></div><p>{battleContent.weapons[build.weaponId].name} · {battleContent.techniques[build.techniqueId].name}</p><div className="combo-list">{battle.activeCombos.map((id) => <span key={id}>连携 · {comboNames[id]}</span>)}</div></section><section className="priority-panel"><div className="panel-heading compact"><span>叁</span><div><small>AUTO CAST</small><h2>出牌次序</h2></div></div><p className="panel-note">拖动或使用箭头排序。自动模式会跳过灵力不足的牌。</p><PriorityList cardIds={battle.autoplayPriority} onChange={(cardIds) => { dispatch({ type: 'reorder_priority', cardIds }); setSave((current) => ({ ...current, loadout: { ...current.loadout, autoplayPriority: cardIds } })) }} /></section><section className="event-panel" aria-live="polite"><div className="panel-heading compact"><span>肆</span><div><small>BATTLE RECORD</small><h2>斗法录</h2></div></div><ol className="event-list">{[...activeEvents].reverse().slice(0, 10).map((event, index) => { const [time, copy] = formatEvent(event); return <li key={`${event.atMs}-${event.type}-${index}`}><time>{time}s</time><span>{copy}</span></li> })}</ol></section></aside></main>
+        <section className={`battle-table ${campaignSession && campaignSession.stageNumber > 20 ? 'region-roots' : campaignSession && campaignSession.stageNumber > 10 ? 'region-waystation' : ''}`}><div className="scene-vignette" aria-hidden="true" /><div className={`enemy-zone ${battle.enemies.length > 1 ? 'is-group' : ''}`}><p className="zone-label">槐阴异物</p><div className="enemy-card-grid">{battle.enemies.filter((unit) => unit.hp > 0).map((unit, index) => <UnitCard key={`${unit.id}-${index}`} unit={unit} enemy />)}</div></div><div className="battle-meter"><div className="resource-orb sword"><span>剑意</span><strong>{battle.swordIntent}</strong><small>/ {battle.swordIntentCap}</small></div><div className="energy-track"><div className="energy-label"><span>灵力</span><strong>{battle.energy}</strong><small>/ {battle.maxEnergy}</small></div><div className="energy-pips">{Array.from({ length: battle.maxEnergy }, (_, index) => <i key={index} className={index < battle.energy ? 'filled' : ''} />)}</div></div><div className="enemy-resources"><span>符印 <strong>{enemy.talismanMarks}</strong></span><span>灼烧 <strong>{enemy.burnStacks}</strong></span></div><p className={`time-mark ${battle.timeMs >= 60_000 ? 'is-warning' : ''}`}>{(battle.timeMs / 1_000).toFixed(1)} 秒{battle.timeMs >= 150_000 ? ' · 30秒警告' : battle.timeMs >= 60_000 ? ' · 久战' : ''}</p><div className="battle-items">{battle.treasureId && <button type="button" disabled={battle.status !== 'active' || battle.treasureCharge < battle.treasureMaxCharge} onClick={() => dispatch({ type: 'use_treasure', treasureId: battle.treasureId })}>法宝 {battle.treasureCharge}/{battle.treasureMaxCharge}</button>}{Object.entries(battle.consumableUses).map(([id, uses], index) => <button type="button" key={id} disabled={battle.status !== 'active' || uses <= 0} onClick={() => dispatch({ type: 'use_consumable', consumableId: id, slot: index })}>{COLLECTION_BY_ID[id]?.name ?? id} {uses}</button>)}</div></div><div className="combo-row">{battle.activeCombos.map((id) => <span key={id}>{comboNames[id]}</span>)}</div>
+          <div className="hand-zone"><div className="hand-heading"><span>{PROTOTYPE_CONTENT.builds[battle.buildId].name} · {battleContent.weapons[build.weaponId].name}</span><span>手牌 {battle.hand.length}/4</span><span>牌库 {battle.deck.length}</span><span>弃牌 {battle.discard.length}</span></div><div className="hand-cards">{battle.hand.map((cardRef) => { const cardId = getCardId(cardRef); const instanceId = isBattleCardInstance(cardRef) ? cardRef.instanceId : undefined; const card = battleContent.cards[cardId]; const availability = getCardAvailability(battle, card, undefined, false, cardRef); const art = card.artKey ? artFiles[card.artKey] : undefined; const unavailable = availability.reason === 'battle_ended' ? '战斗已结束' : availability.reason === 'insufficient_energy' ? '灵力不足' : availability.reason === 'no_living_spirit' ? '无存活妖灵' : undefined; const hint = availability.reason === 'target_required' ? '点击后选择妖灵' : undefined; return <button type="button" key={instanceId ?? cardId} className={`hand-card archetype-${card.tags[0]} ${targetingCard === cardId && targetingInstanceId === instanceId ? 'is-targeting' : ''} ${unavailable ? 'is-unavailable' : ''}`} disabled={Boolean(unavailable)} onClick={() => clickCard(cardId, instanceId)}><span className="card-cost">{availability.cost}</span><span className="card-kind">{card.kind}</span><strong>{card.name}</strong><span className="card-illustration" aria-hidden="true">{art ? <img src={`${ASSET_ROOT}${art}`} alt="" /> : <i>{card.name.at(0)}</i>}</span><span className="card-text">{card.description}</span>{(unavailable || hint) && <span className="card-unavailable">{unavailable ?? hint}</span>}</button> })}</div></div>{battle.status !== 'active' && <div className={`battle-result ${battle.status}`} role="status"><span>{battle.status === 'victory' ? '破' : '败'}</span><h2>{battle.status === 'victory' ? '试法告捷' : '心脉受创'}</h2><p>{trialBattle ? '劫境战斗已结束，返回地图结算本格。' : battle.status === 'victory' ? `「${PROTOTYPE_CONTENT.builds[battle.buildId].name}」已证可行。` : '此关未能通过，系统已记录失败原因。'}</p><div className="battle-result-actions"><button type="button" className="result-primary" onClick={finishBattle}>{trialBattle ? '返回劫境并结算' : '返回游历并结算'}</button><button type="button" onClick={() => dispatch({ type: 'restart' })}>重试本关</button></div></div>}
+        </section><aside className="intel-panel"><section className="build-summary"><div className="panel-heading compact"><span>贰</span><div><small>ACTIVE BUILD</small><h2>{PROTOTYPE_CONTENT.builds[battle.buildId].name}</h2></div></div><p>{battleContent.weapons[build.weaponId].name} · {battleContent.techniques[build.techniqueId].name}</p><div className="combo-list">{battle.activeCombos.map((id) => <span key={id}>连携 · {comboNames[id]}</span>)}</div></section><section className="priority-panel"><div className="panel-heading compact"><span>叁</span><div><small>AUTO CAST</small><h2>出牌次序</h2></div></div><p className="panel-note">拖动或使用箭头排序。自动模式会跳过灵力不足的牌。</p><PriorityList cardIds={battle.autoplayPriority} onChange={(cardIds) => { dispatch({ type: 'reorder_priority', cardIds }); setSave((current) => ({ ...current, loadout: { ...current.loadout, autoplayPriority: cardIds } })) }} /></section><section className="event-panel" aria-live="polite"><div className="panel-heading compact"><span>肆</span><div><small>BATTLE RECORD</small><h2>斗法录</h2></div></div><ol className="event-list">{(activeEvents ?? []).slice().reverse().slice(0, 10).map((event, index) => { const [time, copy] = formatEvent(event); return <li key={`${event.atMs}-${event.type}-${index}`}><time>{time}s</time><span>{copy}</span></li> })}</ol></section></aside></main>
     </>}
   </div>
 }

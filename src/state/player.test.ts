@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { BACKUP_SAVE_KEY, SAVE_KEY, battleContentFromSave, createPlayerSave, loadPlayerSave, parseSave, previewReroll, receiveCollectible, resetLevel, resolveReroll, upgrade } from './player'
+import { BACKUP_SAVE_KEY, SAVE_KEY, attachTrialRun, battleContentFromSave, claimTrialSettlement, createPlayerSave, loadPlayerSave, parseSave, previewReroll, receiveCollectible, resetLevel, resolveReroll, upgrade } from './player'
+import { createTrialSettlement, createTrial } from '../game/trial'
 
 describe('player progression', () => {
   it('upgrades, fully refunds, and converts duplicates', () => {
@@ -25,20 +26,20 @@ describe('player progression', () => {
     expect(parseSave(JSON.stringify(createPlayerSave())).success).toBe(true)
   })
 
-  it('migrates v1 to v3 while preserving collection progress', () => {
+  it('migrates v1 to v4 while preserving collection progress', () => {
     const current = createPlayerSave(100)
     const { campaign: _campaign, ...legacy } = current
     const parsed = parseSave(JSON.stringify({ ...legacy, saveVersion: 1 }), 500)
     expect(parsed.success).toBe(true)
     if (!parsed.success) return
-    expect(parsed.data.saveVersion).toBe(3)
+    expect(parsed.data.saveVersion).toBe(4)
     expect(parsed.data.ownedIds).toEqual(current.ownedIds)
     expect(parsed.data.resources).toEqual(current.resources)
     expect(parsed.data.campaign.lastActiveAtMs).toBe(500)
     expect(parsed.data.campaign.lastFailure).toBeUndefined()
   })
 
-  it('migrates v2 to v3 without dropping campaign progress or a failure reminder', () => {
+  it('migrates v2 to v4 without dropping campaign progress or a failure reminder', () => {
     const current = createPlayerSave(100)
     const v2 = {
       ...current,
@@ -54,12 +55,25 @@ describe('player progression', () => {
     const parsed = parseSave(JSON.stringify(v2), 500)
     expect(parsed.success).toBe(true)
     if (!parsed.success) return
-    expect(parsed.data.saveVersion).toBe(3)
+    expect(parsed.data.saveVersion).toBe(4)
     expect(parsed.data.resources).toEqual(current.resources)
     expect(parsed.data.ownedIds).toEqual(current.ownedIds)
     expect(parsed.data.campaign.highestClearedStage).toBe(4)
     expect(parsed.data.campaign.stableStage).toBe(4)
     expect(parsed.data.campaign.lastFailure).toEqual(v2.campaign.lastFailure)
+    expect(parsed.data.realmId).toBe('qi_refining')
+    expect(parsed.data.discoveredLoreIds).toEqual([])
+  })
+
+  it('migrates v3 saves with safe empty trial collections', () => {
+    const current = createPlayerSave(100)
+    const { realmId: _realmId, trialRun: _trialRun, pendingTrialSettlement: _pendingTrialSettlement, settledTrialSourceIds: _settledTrialSourceIds, discoveredLoreIds: _discoveredLoreIds, readLoreIds: _readLoreIds, ...v3 } = current
+    const parsed = parseSave(JSON.stringify({ ...v3, saveVersion: 3 }), 500)
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.data.saveVersion).toBe(4)
+    expect(parsed.data.trialRun).toBeUndefined()
+    expect(parsed.data.settledTrialSourceIds).toEqual([])
   })
 
   it('starts a formal journey with only the sword build unlocked', () => {
@@ -69,10 +83,33 @@ describe('player progression', () => {
     expect(save.ownedIds).not.toContain('cinnabar_brush')
   })
 
+  it('claims a trial settlement once and keeps lore discoveries', () => {
+    const save = createPlayerSave(0)
+    const run = createTrial(19, save)
+    run.status = 'success'
+    run.discoveredLoreIds = ['event_talking_stele']
+    const settlement = createTrialSettlement(run)
+    const pending = { ...save, pendingTrialSettlement: settlement }
+    const first = claimTrialSettlement(pending, 100)
+    const second = claimTrialSettlement(first, 101)
+    expect(first.realmId).toBe('foundation_established')
+    expect(first.discoveredLoreIds).toContain('event_talking_stele')
+    expect(first.pendingTrialSettlement).toBeUndefined()
+    expect(second).toEqual(first)
+  })
+
+  it('round-trips a valid v4 trial run through the import boundary', () => {
+    const save = createPlayerSave(0)
+    const withTrial = attachTrialRun(save, createTrial(20, save))
+    const parsed = parseSave(JSON.stringify(withTrial))
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data.trialRun?.grid).toHaveLength(26)
+  })
+
   it('backs up a damaged local save and persists priority and upgrades', () => {
     const data = new Map([[SAVE_KEY, '{broken']])
     const storage = { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => data.set(key, value) }
-    expect(loadPlayerSave(storage).saveVersion).toBe(3)
+    expect(loadPlayerSave(storage).saveVersion).toBe(4)
     expect(data.get(BACKUP_SAVE_KEY)).toBe('{broken')
 
     const save = createPlayerSave()

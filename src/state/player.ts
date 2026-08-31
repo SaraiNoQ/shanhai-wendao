@@ -3,16 +3,18 @@ import { AFFIXES, COLLECTION_BY_ID, EQUIPMENT, type AffixId, type CollectibleDef
 import { PROTOTYPE_CONTENT } from '../content/prototype'
 import type { BattleContent, BuildId, CardId, SpiritId, TechniqueId, WeaponId } from '../game/types'
 import type { BattleReport, CampaignFailure, CampaignProgress, PendingOfflineSettlement } from '../game/campaign'
+import type { TrialRun, TrialSettlement } from '../game/trial'
+import { TRIAL_TILE_KINDS } from '../content/trial'
 
 export const SAVE_KEY = 'shanhai_wendao_save'
 export const BACKUP_SAVE_KEY = `${SAVE_KEY}_invalid_backup`
-export const SAVE_VERSION = 3
+export const SAVE_VERSION = 4
 const LEVEL_CAP = 10
 const REROLL_COST = 40
 const affixIds = Object.keys(AFFIXES) as AffixId[]
 
 export interface PlayerSave {
-  saveVersion: 3
+  saveVersion: 4
   resources: { cultivation: number; spiritSand: number; daoEssence: number; spiritEssence: number; artifactEssence: number }
   ownedIds: string[]
   levels: Record<string, number>
@@ -24,10 +26,17 @@ export interface PlayerSave {
   pendingReroll?: { equipmentId: string; affixes: AffixId[] }
   rerollCount: number
   campaign: CampaignProgress
+  realmId: 'qi_refining' | 'foundation_established'
+  trialRun?: TrialRun
+  pendingTrialSettlement?: TrialSettlement
+  settledTrialSourceIds: string[]
+  discoveredLoreIds: string[]
+  readLoreIds: string[]
 }
 
-type LegacyPlayerSave = Omit<PlayerSave, 'saveVersion' | 'campaign'> & { saveVersion: 1 }
-type V2PlayerSave = Omit<PlayerSave, 'saveVersion'> & { saveVersion: 2 }
+type LegacyPlayerSave = Omit<PlayerSave, 'saveVersion' | 'campaign' | 'realmId' | 'trialRun' | 'pendingTrialSettlement' | 'settledTrialSourceIds' | 'discoveredLoreIds' | 'readLoreIds'> & { saveVersion: 1 }
+type V2PlayerSave = Omit<PlayerSave, 'saveVersion' | 'realmId' | 'trialRun' | 'pendingTrialSettlement' | 'settledTrialSourceIds' | 'discoveredLoreIds' | 'readLoreIds'> & { saveVersion: 2 }
+type V3PlayerSave = Omit<PlayerSave, 'saveVersion' | 'realmId' | 'trialRun' | 'pendingTrialSettlement' | 'settledTrialSourceIds' | 'discoveredLoreIds' | 'readLoreIds'> & { saveVersion: 3 }
 
 const buildIds = Object.keys(PROTOTYPE_CONTENT.builds) as [BuildId, ...BuildId[]]
 const weaponIds = Object.keys(PROTOTYPE_CONTENT.weapons) as [WeaponId, ...WeaponId[]]
@@ -53,6 +62,19 @@ const campaignSchema: z.ZodType<CampaignProgress> = z.object({
   highestClearedStage: z.number().int().min(0).max(30), stableStage: z.number().int().min(0).max(30), mode: z.enum(['advance', 'farm', 'paused']), campaignSeed: z.number().int(), battleSequence: z.number().int().nonnegative(), duplicateDropStreak: z.number().int().nonnegative(), trialUnlocked: z.boolean(), lastActiveAtMs: z.number().int().nonnegative(), settledRewardSourceIds: z.array(z.string()), lastFailure: campaignFailureSchema.optional(), latestReport: reportSchema.optional(), pendingOfflineSettlement: pendingSchema.optional(),
 })
 
+const trialRunSchema = z.custom<TrialRun>((value) => {
+  if (!value || typeof value !== 'object') return false
+  const run = value as TrialRun
+  if (!Array.isArray(run.grid) || !Array.isArray(run.cardInstances)) return false
+  const cardCounts = new Map<string, number>()
+  for (const card of run.cardInstances) cardCounts.set(card.cardId, (cardCounts.get(card.cardId) ?? 0) + 1)
+  return run.grid.length === 26 && run.grid.every((tile) => tile.x >= 0 && tile.x < 7 && tile.y >= 0 && tile.y < 7 && (tile.kind === 'start' || TRIAL_TILE_KINDS.includes(tile.kind)))
+    && new Set(run.grid.map((tile) => tile.id)).size === run.grid.length && run.grid.some((tile) => tile.id === run.positionTileId)
+    && run.actionPoints >= 0 && run.actionPoints <= 22 && run.cardInstances.length >= 6 && run.cardInstances.length <= 12
+    && [...cardCounts.values()].every((count) => count <= 2)
+}, { message: '劫境存档结构无效' }).optional()
+const trialSettlementSchema = z.custom<TrialSettlement>((value) => Boolean(value && typeof value === 'object' && typeof (value as TrialSettlement).sourceId === 'string' && Array.isArray((value as TrialSettlement).rewards) && Array.isArray((value as TrialSettlement).discoveredLoreIds)), { message: '劫境结算无效' }).optional()
+
 const legacySaveSchema = z.object({
   saveVersion: z.literal(1),
   resources: resourcesSchema,
@@ -64,7 +86,7 @@ const legacySaveSchema = z.object({
   rerollCount: z.number().int().nonnegative(),
 })
 
-function validatePlayerShape(save: LegacyPlayerSave | V2PlayerSave | PlayerSave, context: z.RefinementCtx) {
+function validatePlayerShape(save: LegacyPlayerSave | V2PlayerSave | V3PlayerSave | PlayerSave, context: z.RefinementCtx) {
   const owns = (id: string) => save.ownedIds.includes(id)
   const validEquipment = save.loadout.equipmentIds.every((id, index) => COLLECTION_BY_ID[id]?.slot === (['head', 'robe', 'feet', 'charm'] as EquipmentSlot[])[index] && owns(id))
   const validLoadout = validEquipment && COLLECTION_BY_ID[save.loadout.treasureId]?.category === 'treasure' && owns(save.loadout.treasureId)
@@ -76,7 +98,8 @@ function validatePlayerShape(save: LegacyPlayerSave | V2PlayerSave | PlayerSave,
 
 const validatedLegacySaveSchema = legacySaveSchema.superRefine(validatePlayerShape)
 const validatedV2SaveSchema = legacySaveSchema.extend({ saveVersion: z.literal(2), campaign: campaignSchema }).superRefine(validatePlayerShape)
-const saveSchema = legacySaveSchema.extend({ saveVersion: z.literal(3), campaign: campaignSchema }).superRefine(validatePlayerShape)
+const validatedV3SaveSchema = legacySaveSchema.extend({ saveVersion: z.literal(3), campaign: campaignSchema }).superRefine(validatePlayerShape)
+const saveSchema = legacySaveSchema.extend({ saveVersion: z.literal(4), campaign: campaignSchema, realmId: z.enum(['qi_refining', 'foundation_established']), trialRun: trialRunSchema, pendingTrialSettlement: trialSettlementSchema, settledTrialSourceIds: z.array(z.string()), discoveredLoreIds: z.array(z.string()), readLoreIds: z.array(z.string()) }).superRefine(validatePlayerShape)
 
 function initialAffixes() {
   return Object.fromEntries(EQUIPMENT.map((equipment, index) => [equipment.id, affixIds.slice(index % 3, index % 3 + (equipment.affixSlots ?? 1))])) as Record<string, AffixId[]>
@@ -104,16 +127,20 @@ export function createPlayerSave(nowMs = 0): PlayerSave {
       equipmentIds: ['equipment_green_bamboo_crown', 'equipment_wandering_cloud_robe', 'equipment_wind_chasing_shoes', 'equipment_hidden_edge_jade'], treasureId: 'treasure_crescent_sword_case',
       consumableIds: ['consumable_spring_return_pill', 'consumable_spirit_gathering_pill'], autoplayPriority: [...build.cardIds],
     },
-    equipmentAffixes: initialAffixes(), rerollCount: 0, campaign: createCampaign(nowMs),
+    equipmentAffixes: initialAffixes(), rerollCount: 0, campaign: createCampaign(nowMs), realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [],
   }
 }
 
 export function migrateSaveV1(save: LegacyPlayerSave, nowMs: number): PlayerSave {
-  return { ...save, saveVersion: 3, campaign: createCampaign(nowMs) }
+  return { ...save, saveVersion: 4, campaign: createCampaign(nowMs), realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [] }
 }
 
 export function migrateSaveV2(save: V2PlayerSave): PlayerSave {
-  return { ...save, saveVersion: 3 }
+  return { ...save, saveVersion: 4, realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [] }
+}
+
+export function migrateSaveV3(save: V3PlayerSave): PlayerSave {
+  return { ...save, saveVersion: 4, realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [] }
 }
 
 export function parseSave(text: string, nowMs = 0) {
@@ -121,6 +148,8 @@ export function parseSave(text: string, nowMs = 0) {
     const raw = JSON.parse(text)
     const current = saveSchema.safeParse(raw)
     if (current.success) return current
+    const v3 = validatedV3SaveSchema.safeParse(raw)
+    if (v3.success) return saveSchema.safeParse(migrateSaveV3(v3.data))
     const v2 = validatedV2SaveSchema.safeParse(raw)
     if (v2.success) return saveSchema.safeParse(migrateSaveV2(v2.data))
     const legacy = validatedLegacySaveSchema.safeParse(raw)
@@ -232,12 +261,43 @@ export function battleContentFromSave(save: PlayerSave): BattleContent {
     leader: { ...PROTOTYPE_CONTENT.leader, maxHp: PROTOTYPE_CONTENT.leader.maxHp + maxHp, attack: PROTOTYPE_CONTENT.leader.attack + attack, defense: PROTOTYPE_CONTENT.leader.defense + defense },
     spirits,
     cards,
+    modifiers: { equipmentIds: [...loadout.equipmentIds], affixIds: equippedAffixes, treasureId: loadout.treasureId, consumableIds: [...loadout.consumableIds] },
     builds: { ...PROTOTYPE_CONTENT.builds, [loadout.buildId]: { ...PROTOTYPE_CONTENT.builds[loadout.buildId], weaponId: loadout.weaponId, techniqueId: loadout.techniqueId, spiritIds: loadout.spiritIds, cardIds: loadout.cardIds, autoplayPriority: loadout.autoplayPriority } },
   }
 }
 
 export function attachOfflineSettlement(save: PlayerSave, settlement: PendingOfflineSettlement, nowMs: number): PlayerSave {
   return { ...save, campaign: { ...save.campaign, lastActiveAtMs: nowMs, pendingOfflineSettlement: settlement } }
+}
+
+export function attachTrialRun(save: PlayerSave, trialRun: TrialRun): PlayerSave {
+  return { ...save, trialRun, campaign: { ...save.campaign, mode: 'paused' } }
+}
+
+export function attachTrialSettlement(save: PlayerSave, settlement: TrialSettlement): PlayerSave {
+  return { ...save, pendingTrialSettlement: settlement, trialRun: undefined, campaign: { ...save.campaign, mode: 'paused' } }
+}
+
+export function claimTrialSettlement(save: PlayerSave, nowMs = Date.now()): PlayerSave {
+  const settlement = save.pendingTrialSettlement
+  if (!settlement || save.settledTrialSourceIds.includes(settlement.sourceId)) return save
+  let resources = { ...save.resources, spiritSand: Math.max(0, save.resources.spiritSand - settlement.resourceSpent.spiritSand), artifactEssence: Math.max(0, save.resources.artifactEssence - settlement.resourceSpent.artifactEssence) }
+  const ownedIds = new Set(save.ownedIds)
+  const discoveredLoreIds = new Set(save.discoveredLoreIds)
+  for (const id of settlement.discoveredLoreIds) discoveredLoreIds.add(id)
+  for (const reward of settlement.rewards) {
+    if (reward.resource === 'cultivation') resources.cultivation += reward.amount ?? 0
+    if (reward.resource === 'spiritSand') resources.spiritSand += reward.amount ?? 0
+    if (reward.resource === 'artifactEssence') resources.artifactEssence += reward.amount ?? 0
+    if (reward.kind === 'lore' && reward.loreId) discoveredLoreIds.add(reward.loreId)
+    if (reward.kind === 'card' && reward.cardId && COLLECTION_BY_ID[reward.cardId]) ownedIds.add(reward.cardId)
+  }
+  return { ...save, resources, ownedIds: [...ownedIds], discoveredLoreIds: [...discoveredLoreIds], pendingTrialSettlement: undefined, trialRun: undefined, realmId: settlement.result === 'success' ? 'foundation_established' : save.realmId, settledTrialSourceIds: [...save.settledTrialSourceIds, settlement.sourceId], campaign: { ...save.campaign, mode: 'paused', lastActiveAtMs: nowMs } }
+}
+
+export function markLoreRead(save: PlayerSave, loreId: string): PlayerSave {
+  if (!save.discoveredLoreIds.includes(loreId) || save.readLoreIds.includes(loreId)) return save
+  return { ...save, readLoreIds: [...save.readLoreIds, loreId] }
 }
 
 export function claimOfflineSettlement(save: PlayerSave, nowMs: number): PlayerSave {

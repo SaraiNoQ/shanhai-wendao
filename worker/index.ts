@@ -6,7 +6,7 @@ const worker = {
       return Response.json({
         status: 'ok',
         service: 'shanhai-wendao',
-        version: 'm4.5',
+        version: 'm5',
       })
     }
 

@@ -18,6 +18,7 @@ export interface CollectibleDefinition {
   duplicateEssence: number
   slot?: EquipmentSlot
   affixSlots?: 1 | 2
+  artKey?: string
 }
 
 const categoryEssence: Record<CollectionCategory, EssenceType> = {
@@ -32,9 +33,25 @@ function item(id: string, name: string, category: CollectionCategory, summary: s
     lore: options.lore ?? '槐阴古道所得，器上仍留有未散的山雾。',
     unlockSource: options.unlockSource ?? '炼气试演',
     essenceType: categoryEssence[category], duplicateEssence: options.duplicateEssence ?? 12,
-    slot: options.slot, affixSlots: options.affixSlots,
+    slot: options.slot, affixSlots: options.affixSlots, artKey: options.artKey,
   }
 }
+
+/** 稳定素材键；未列出的收藏继续使用统一占位图。 */
+export const CORE_COLLECTION_ART_KEYS = {
+  azure_wind_sword: 'weapon_azure_wind_sword',
+  cinnabar_brush: 'weapon_cinnabar_brush',
+  spirit_bell: 'weapon_spirit_bell',
+  hidden_edge_art: 'technique_hidden_edge_art',
+  edict_talisman_codex: 'technique_edict_talisman_codex',
+  hundred_spirit_codex: 'technique_hundred_spirit_codex',
+  equipment_hidden_edge_jade: 'equipment_hidden_edge_jade',
+  equipment_thunder_coin: 'equipment_thunder_coin',
+  equipment_paired_bronze_bell: 'equipment_paired_bronze_bell',
+  treasure_crescent_sword_case: 'treasure_crescent_sword_case',
+  treasure_mountain_river_inkstone: 'treasure_mountain_river_inkstone',
+  treasure_soul_summoning_banner: 'treasure_soul_summoning_banner',
+} as const
 
 const equipment = [
   item('equipment_green_bamboo_crown', '青竹束冠', 'equipment', '每打出第 3 张剑式牌，获得 1 点剑意。', { slot: 'head', tags: ['sword'], affixSlots: 1 }),
@@ -46,18 +63,18 @@ const equipment = [
   item('equipment_wind_chasing_shoes', '追风履', 'equipment', '前三张不同卡牌的费用总计降低 1 点。', { slot: 'feet', tags: ['sword'], affixSlots: 1 }),
   item('equipment_star_treading_shoes', '踏罡履', 'equipment', '连续打出 3 张符法牌后恢复 1 点灵力。', { slot: 'feet', tags: ['talisman'], affixSlots: 2, rarity: 'uncommon' }),
   item('equipment_tracking_straw_sandals', '寻踪草履', 'equipment', '两只妖灵轮流行动时，下一次妖灵伤害提高。', { slot: 'feet', tags: ['spirit'], affixSlots: 2, rarity: 'uncommon' }),
-  item('equipment_hidden_edge_jade', '藏锋玉佩', 'equipment', '剑意上限提高 2，终结伤害提高。', { slot: 'charm', tags: ['sword'], affixSlots: 2, rarity: 'rare' }),
-  item('equipment_thunder_coin', '雷纹古钱', 'equipment', '符印引爆伤害提高，过量符印转为灼烧。', { slot: 'charm', tags: ['talisman'], affixSlots: 2, rarity: 'rare' }),
-  item('equipment_paired_bronze_bell', '同心铜铃', 'equipment', '两只不同妖灵接连行动时，各获得 1 点灵契。', { slot: 'charm', tags: ['spirit'], affixSlots: 2, rarity: 'rare' }),
+  item('equipment_hidden_edge_jade', '藏锋玉佩', 'equipment', '剑意上限提高 2，终结伤害提高。', { slot: 'charm', tags: ['sword'], affixSlots: 2, rarity: 'rare', artKey: CORE_COLLECTION_ART_KEYS.equipment_hidden_edge_jade }),
+  item('equipment_thunder_coin', '雷纹古钱', 'equipment', '符印引爆伤害提高，过量符印转为灼烧。', { slot: 'charm', tags: ['talisman'], affixSlots: 2, rarity: 'rare', artKey: CORE_COLLECTION_ART_KEYS.equipment_thunder_coin }),
+  item('equipment_paired_bronze_bell', '同心铜铃', 'equipment', '两只不同妖灵接连行动时，各获得 1 点灵契。', { slot: 'charm', tags: ['spirit'], affixSlots: 2, rarity: 'rare', artKey: CORE_COLLECTION_ART_KEYS.equipment_paired_bronze_bell }),
 ]
 
 const treasures = [
-  item('treasure_crescent_sword_case', '残月剑匣', 'treasure', '蓄能后释放多段飞剑，读取当前剑意。', { tags: ['sword'], rarity: 'rare' }),
+  item('treasure_crescent_sword_case', '残月剑匣', 'treasure', '蓄能后释放多段飞剑，读取当前剑意。', { tags: ['sword'], rarity: 'rare', artKey: CORE_COLLECTION_ART_KEYS.treasure_crescent_sword_case }),
   item('treasure_demon_revealing_mirror', '照妖镜', 'treasure', '揭示弱点，使当前目标承受更多标签伤害。', { rarity: 'uncommon' }),
   item('treasure_primordial_gourd', '混元葫芦', 'treasure', '恢复灵力，并让下一张高费牌减耗。', { rarity: 'rare' }),
   item('treasure_demon_binding_rope', '缚妖索', 'treasure', '延后敌人下一次行动。', { rarity: 'uncommon' }),
-  item('treasure_mountain_river_inkstone', '山河砚', 'treasure', '为全队提供护盾。', { tags: ['shield'], rarity: 'rare' }),
-  item('treasure_soul_summoning_banner', '招魂幡', 'treasure', '两只妖灵立即各获得 2 点灵契。', { tags: ['spirit'], rarity: 'legacy' }),
+  item('treasure_mountain_river_inkstone', '山河砚', 'treasure', '为全队提供护盾。', { tags: ['shield'], rarity: 'rare', artKey: CORE_COLLECTION_ART_KEYS.treasure_mountain_river_inkstone }),
+  item('treasure_soul_summoning_banner', '招魂幡', 'treasure', '两只妖灵立即各获得 2 点灵契。', { tags: ['spirit'], rarity: 'legacy', artKey: CORE_COLLECTION_ART_KEYS.treasure_soul_summoning_banner }),
 ]
 
 const consumables = [
@@ -70,8 +87,8 @@ const consumables = [
 ]
 
 const existing = [
-  ...Object.values(PROTOTYPE_CONTENT.weapons).map((value) => item(value.id, value.name, 'weapon', '决定基础攻击方式与攻击间隔。', { tags: [value.tag] })),
-  ...Object.values(PROTOTYPE_CONTENT.techniques).map((value) => item(value.id, value.name, 'technique', '决定核心被动与流派资源。', { tags: [value.tag], rarity: 'uncommon' })),
+  ...Object.values(PROTOTYPE_CONTENT.weapons).map((value) => item(value.id, value.name, 'weapon', '决定基础攻击方式与攻击间隔。', { tags: [value.tag], artKey: CORE_COLLECTION_ART_KEYS[value.id as keyof typeof CORE_COLLECTION_ART_KEYS] })),
+  ...Object.values(PROTOTYPE_CONTENT.techniques).map((value) => item(value.id, value.name, 'technique', '决定核心被动与流派资源。', { tags: [value.tag], rarity: 'uncommon', artKey: CORE_COLLECTION_ART_KEYS[value.id as keyof typeof CORE_COLLECTION_ART_KEYS] })),
   ...Object.values(PROTOTYPE_CONTENT.spirits).map((value) => item(value.id, value.name, 'spirit', `${value.title}，可参与自动行动与灵契协击。`, { tags: value.tags, rarity: 'uncommon' })),
   ...Object.values(PROTOTYPE_CONTENT.cards).map((value) => item(value.id, value.name, 'card', value.description, { tags: value.tags })),
 ]

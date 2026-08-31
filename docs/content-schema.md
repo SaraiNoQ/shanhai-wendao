@@ -125,7 +125,7 @@ type CampaignProgress = {
 }
 ```
 
-- `saveVersion` 当前为 `3`；`v1 → v3` 迁移只初始化主线字段，`v2 → v3` 保留已有主线进度；两种迁移都必须保留资源、收藏、等级、配装和词条。
+- `saveVersion` 当前为 `4`；`v1/v2/v3 → v4` 迁移保留资源、收藏、等级、配装、词条和主线，补齐 `realmId`、劫境运行、结算幂等 ID 与志怪录字段。
 - `lastFailure` 持久记录最近一次卡关、失败原因、稳定回退关和结算后的 `battleSequence`；稳定刷取胜利不覆盖提醒，成功越过失败关后清除。
 - `PendingOfflineSettlement` 必须包含唯一 `reportId`、结算时长、战斗次数、推进/失败关卡、资源变化、新收藏、主线结果、奖励来源 ID 和可解释战报。
 - 离线时长先把时间倒退归零，再限制为 24 小时；报告先挂起，确认领取后才能把资源、收藏和 `reportId` 写入当前存档。
@@ -135,7 +135,19 @@ type CampaignProgress = {
 
 - `artKey` 是稳定素材键，不在内容对象中内嵌图片或生成提示词；对应文件、尺寸、参考图和后处理记录见 [素材流程](asset-pipeline.md)。
 - M4 使用 17 件主线正式像素素材。图片不得包含名称、数字、卡框、Logo 或水印；未生成素材可以使用统一墨影占位。
+- M5 使用 13 件劫境/核心收藏正式像素素材；`CollectibleDefinition.artKey` 可选，未生成素材继续使用统一占位。
 - 背景和卡图使用 960×540 / 320×180，角色、妖灵和敌人使用 256×256 透明 PNG；运行时只加载静态文件，不调用 AI 或外部服务。
+
+### 7.4 M5 劫境引用
+
+```ts
+type TrialTile = { id: string; x: number; y: number; kind: 'start' | 'combat' | 'elite' | 'event' | 'training' | 'merchant' | 'chest' | 'camp' | 'boss'; contentId?: string; resolved: boolean }
+type BattleCardInstance = { instanceId: string; cardId: string; upgraded: boolean; exhaust: boolean }
+```
+
+- `TrialRun` 保存 26 个已生成格子、当前位置、已揭示格、18/22 行炁、0–2 劫印、6–12 张实例牌、法宝充能、消耗品次数、pending 事项和 secured 奖励；不保存战斗中间状态。
+- 劫境事件使用 `event_` 稳定 ID，每局最多处理一次；发现的敌人和事件写入 `discoveredLoreIds`，不进入养成等级或掉落池。
+- `TrialSettlement.sourceId` 是成功、失败或撤退结算的唯一键；失败/撤退只带回 `secured` 奖励，成功才设置 `foundation_established`。
 
 ## 8. 内容提交检查
 

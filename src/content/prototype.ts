@@ -62,6 +62,7 @@ const enemyDefinitions = {
   borrowed_life_crone: enemy('borrowed_life_crone', '借命婆', '一盏换一命', 420, 20, 20, 4_000, 'enemy_borrowed_life_crone'),
   hundred_eyed_branch: enemy('hundred_eyed_branch', '百眼槐枝', '见法生壳', 560, 22, 24, 3_800, 'enemy_hundred_eyed_branch'),
   paper_armor_envoy: enemy('paper_armor_envoy', '纸甲巡使', '封关巡夜', 720, 25, 28, 3_600, 'enemy_paper_armor_envoy'),
+  ancient_huai_matriarch: enemy('ancient_huai_matriarch', '千年槐姥', '槐根渡劫', 1_800, 32, 34, 4_200, 'boss_ancient_huai_matriarch'),
 } satisfies Record<EnemyId, EnemyDefinition>
 
 function build(id: BuildId, name: string, subtitle: string, weaponId: WeaponId, techniqueId: TechniqueId, spiritIds: BuildPreset['spiritIds'], cardIds: BuildPreset['cardIds']): BuildPreset {

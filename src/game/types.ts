@@ -23,6 +23,7 @@ export type EnemyId =
   | 'borrowed_life_crone'
   | 'hundred_eyed_branch'
   | 'paper_armor_envoy'
+  | 'ancient_huai_matriarch'
 export type UnitId = 'leader' | SpiritId | EnemyId
 export type EnemyBehaviorId = EnemyId
 
@@ -51,6 +52,15 @@ export type CardId =
   | 'borrow_spirit'
   | 'all_spirits_covenant'
   | 'night_of_hundred_beasts'
+
+export interface BattleCardInstance {
+  instanceId: string
+  cardId: CardId
+  upgraded: boolean
+  exhaust: boolean
+}
+
+export type BattleCardReference = CardId | BattleCardInstance
 
 export type BuildId =
   | 'pure_sword'
@@ -128,6 +138,7 @@ export interface CardDefinition {
   burn?: number
   heal?: number
   delayMs?: number
+  exhaust?: boolean
   artKey?: string
 }
 
@@ -152,6 +163,28 @@ export interface BattleContent {
   cards: Readonly<Record<CardId, CardDefinition>>
   builds: Readonly<Record<BuildId, BuildPreset>>
   defaultBuildId: BuildId
+  modifiers?: BattleModifiers
+}
+
+export interface BattleModifiers {
+  equipmentIds: readonly string[]
+  affixIds: readonly string[]
+  treasureId?: string
+  consumableIds?: readonly string[]
+}
+
+export interface BattleSetup {
+  buildId?: BuildId
+  deck?: readonly BattleCardReference[]
+  hand?: readonly BattleCardReference[]
+  discard?: readonly BattleCardReference[]
+  /** Full starting deck alias for callers that keep instances separately. */
+  cardInstances?: readonly BattleCardReference[]
+  treasureId?: string
+  treasureCharge?: number
+  treasureMaxCharge?: number
+  consumableIds?: readonly string[]
+  consumableUses?: Readonly<Record<string, number>>
 }
 
 export interface UnitState extends UnitDefinition {
@@ -169,7 +202,7 @@ export interface UnitState extends UnitDefinition {
   summonTriggered: boolean
 }
 
-export interface BattleState {
+export interface BattleState<CardReference extends BattleCardReference = CardId> {
   seed: number
   rngState: number[]
   timeMs: number
@@ -204,16 +237,35 @@ export interface BattleState {
   swordCardsPlayed: CardId[]
   lastPlayerCardTag?: Archetype
   sameTagStreak: number
-  deck: CardId[]
-  hand: CardId[]
-  discard: CardId[]
+  bossPhase?: 'rooted' | 'reflection' | 'huai_trial'
+  bossMarkedSpiritId?: SpiritId
+  bossDominantTag?: Archetype
+  cardTagCounts: Record<Archetype, number>
+  treasureId?: string
+  treasureCharge: number
+  treasureMaxCharge: number
+  consumableUses: Record<string, number>
+  deck: CardReference[]
+  hand: CardReference[]
+  discard: CardReference[]
   autoplay: boolean
   autoplayPriority: CardId[]
+  battleSetup?: BattleSetup
+  equipmentIds: string[]
+  affixIds: string[]
+  cardDiscountCharges: number
+  playedCardIds: CardId[]
+  talismanCardStreak: number
+  firstCardShieldGranted: boolean
+  lastSpiritActionId?: SpiritId
+  lastSpiritActionAtMs: number
 }
 
 export type BattleCommand =
   | { type: 'advance'; elapsedMs: number }
-  | { type: 'play_card'; cardId: CardId; targetId?: UnitId }
+  | { type: 'play_card'; cardId?: CardId; cardInstanceId?: string; targetId?: UnitId }
+  | { type: 'use_treasure'; treasureId?: string }
+  | { type: 'use_consumable'; consumableId?: string; slot?: number; targetId?: UnitId }
   | { type: 'set_autoplay'; enabled: boolean }
   | { type: 'reorder_priority'; cardIds: CardId[] }
   | { type: 'restart'; seed?: number; buildId?: BuildId }
@@ -223,11 +275,14 @@ interface TimedEvent { atMs: number }
 export type BattleEvent = TimedEvent &
   (
     | { type: 'battle_started'; seed: number; buildId: BuildId }
-    | { type: 'card_drawn'; cardId: CardId }
-    | { type: 'card_played'; cardId: CardId; automatic: boolean; targetId?: UnitId }
-    | { type: 'damage'; sourceId: UnitId | CardId | 'burn'; targetId: UnitId; amount: number; shieldAbsorbed: number }
-    | { type: 'heal'; sourceId: UnitId | CardId; targetId: UnitId; amount: number }
-    | { type: 'shield'; sourceId: UnitId | CardId; targetId: UnitId; amount: number }
+    | { type: 'card_drawn'; cardId: CardId; instanceId?: string }
+    | { type: 'card_played'; cardId: CardId; instanceId?: string; automatic: boolean; targetId?: UnitId }
+    | { type: 'card_exhausted'; cardId: CardId; instanceId?: string }
+    | { type: 'treasure_used'; treasureId: string; remainingCharge: number }
+    | { type: 'consumable_used'; consumableId: string; remainingUses: number; targetId?: UnitId }
+    | { type: 'damage'; sourceId: string; targetId: UnitId; amount: number; shieldAbsorbed: number }
+    | { type: 'heal'; sourceId: string; targetId: UnitId; amount: number }
+    | { type: 'shield'; sourceId: string; targetId: UnitId; amount: number }
     | { type: 'status_changed'; targetId: UnitId | 'battle'; status: 'sword_intent' | 'armor_break' | 'talisman_mark' | 'burn' | 'spirit_bond' | 'energy_discount'; value: number }
     | { type: 'energy_changed'; value: number }
     | { type: 'unit_action'; unitId: UnitId; action: string }
@@ -235,9 +290,13 @@ export type BattleEvent = TimedEvent &
     | { type: 'enemy_buff'; targetId: EnemyId; status: 'attack' | 'adaptation_shield'; value: number }
     | { type: 'wave_started'; waveNumber: number }
     | { type: 'battle_timeout' }
+    | { type: 'boss_phase_changed'; phase: 'rooted' | 'reflection' | 'huai_trial' }
     | { type: 'combo_triggered'; comboId: ComboId }
     | { type: 'battle_ended'; result: Exclude<BattleStatus, 'active'> }
     | { type: 'message'; text: string }
   )
 
-export interface BattleTransition { state: BattleState; events: BattleEvent[] }
+export interface BattleTransition<CardReference extends BattleCardReference = CardId> {
+  state: BattleState<CardReference>
+  events: BattleEvent[]
+}

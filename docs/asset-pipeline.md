@@ -189,3 +189,29 @@ Constraints: preserve the exact character design, pose, proportions, colors and 
 ```
 
 后处理结果：2 张背景为 960×540、3 张卡图为 320×180，均为 32 色 `pal8`；12 张角色与敌人为 256×256 `rgba`，使用最近邻缩放与透明补边。
+
+## M5 核心收藏与劫境素材记录
+
+- 生成日期：2026-08-31。
+- 生成方式：Codex 内置 OpenAI `image_gen`；模型标识与随机种子未提供。
+- 风格参考：`bg-huaiyin-roots.png`、`portrait-leader-01.png`、`spirit-paper-bride.png`、`card-mountain-splitter.png`、`card-nine-heavens-edict.png`、`spirit-iron-beak-crane.png`。
+- 原图目录：`/Users/sarainoq/.codex/generated_images/01a04267-409c-74d2-b38c-d0d3f52f27af/`。
+- 共用提示词约束：古卷工笔像素、约 32 色、墨黑/枯褐/旧纸灰、妖火青/朱砂红/病态鎏金点色；透明对象只保留一个主体；不得出现文字、数字、符文、卡框、Logo、水印或棋盘格假透明。
+
+| 最终文件 | 用途 | 原图 | 后处理 |
+|---|---|---|---|
+| `bg-huaiyin-trial-map.png` | 7×7 劫境山河图背景 | `exec-4e03caa4-c882-4420-a9b7-9606fd61b3f0.png` | FFmpeg 最近邻缩放 960×540，32 色 `pal8`，无透明 |
+| `weapon-azure-wind-sword.png` | 青岚剑图鉴 | `exec-05d355d6-61c2-4d8f-a487-ab7411c33528.png` | 最近邻缩放 256×256，保留 alpha |
+| `weapon-cinnabar-brush.png` | 朱砂笔图鉴 | `exec-e4d76ae7-f9f4-4e78-83c2-cc0f12c6dfc3.png` | 最近邻缩放 256×256，保留 alpha |
+| `weapon-spirit-bell.png` | 唤灵铃图鉴 | `exec-db01e817-6dad-405c-a37e-840c58b3abec.png` | 最近邻缩放 256×256，保留 alpha |
+| `technique-hidden-edge-art.png` | 太虚藏锋诀图鉴 | `exec-797050bb-9b9e-4369-9887-a892102ebd89.png` | 最近邻缩放 256×256，保留 alpha |
+| `technique-edict-talisman-codex.png` | 上清敕符录图鉴 | `exec-9a83c86d-49b4-4587-90d7-9233ab591d59.png` | 最近邻缩放 256×256，保留 alpha |
+| `technique-hundred-spirit-codex.png` | 百灵归契篇图鉴 | `exec-3f791b9a-9f8b-44ef-a656-9c0fdb0eb198.png` | 最近邻缩放 256×256，保留 alpha |
+| `equipment-hidden-edge-jade.png` | 藏锋玉佩图鉴 | `exec-edaa4ea5-4e1a-4a9b-85d4-085f4a4fe1be.png` | 最近邻缩放 256×256，保留 alpha |
+| `equipment-thunder-coin.png` | 雷纹古钱图鉴 | `exec-8d32df03-a099-4ef2-8b13-9eb18178da4c.png` | 最近邻缩放 256×256，保留 alpha |
+| `equipment-paired-bronze-bell.png` | 同心铜铃图鉴 | `exec-a486ca46-3945-447e-ad68-5b1bb4645ef4.png` | 最近邻缩放 256×256，保留 alpha |
+| `treasure-crescent-sword-case.png` | 残月剑匣图鉴 | `exec-258e9ff2-41e4-4f27-992b-2018210b2235.png` | 最近邻缩放 256×256，保留 alpha |
+| `treasure-mountain-river-inkstone.png` | 山河砚图鉴 | `exec-75fa39ca-5a9c-4824-85cf-8cb519c5a3e7.png` | 最近邻缩放 256×256，保留 alpha |
+| `treasure-soul-summoning-banner.png` | 招魂幡图鉴 | `exec-b5ca2c3f-e907-42a7-bd2b-9908c8d17448.png` | 最近邻缩放 256×256，保留 alpha |
+
+两次额外单图生成用于纠正首批输出主体错配：`exec-edaa4ea5-4e1a-4a9b-85d4-085f4a4fe1be.png` 明确为单枚玉佩，`exec-a486ca46-3945-447e-ad68-5b1bb4645ef4.png` 明确为一对铜铃；未采用错配的 `exec-22532d33-f0a5-45be-b619-eda06f2e60d5.png` 与 `exec-f9478cd6-3963-4897-9053-a4f42443ab47.png`。所有透明对象已用 `ffprobe` 检查为 `rgba` 且 alpha 范围为 0–255；棋盘背景已检查为 960×540/32 色。

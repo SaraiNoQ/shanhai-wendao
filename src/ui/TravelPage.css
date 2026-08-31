@@ -83,6 +83,10 @@
 @media (max-width: 700px) { .travel-page { padding-inline: 10px; }.travel-heading { align-items: flex-start; flex-direction: column; }.travel-heading-stats { justify-content: flex-start; }.travel-map-header { align-items: flex-start; flex-direction: column; padding-inline: 18px; }.travel-map-progress { width: 100%; }.travel-map-legend, .travel-regions { padding-inline: 18px; }.travel-map-legend { flex-wrap: wrap; justify-content: flex-start; }.travel-node-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.travel-node-grid::before { display: none; }.travel-map-foot { align-items: flex-start; flex-direction: column; margin-inline: 18px; }.travel-sidebar { grid-template-columns: 1fr; }.travel-report-card, .travel-pending-button { grid-column: auto; }.travel-offline-columns { grid-template-columns: 1fr; }.travel-offline-columns > section + section { padding-top: 14px; padding-left: 0; border-top: 1px solid rgb(195 165 102 / 18%); border-left: 0; }.travel-modal-actions button { flex-basis: 0; }.travel-modal-seal { right: 45px; } }
 @media (prefers-reduced-motion: reduce) { .travel-node, .travel-pending-button { transition: none; } }
 
+.travel-gate-note button { display: block; min-height: 36px; margin-top: 9px; padding: 7px 11px; border: 1px solid var(--sick-gold); color: var(--sick-gold); background: rgb(73 56 20 / 48%); font-size: .7rem; cursor: pointer; }
+.travel-gate-note button:hover:not(:disabled), .travel-gate-note button:focus-visible { border-color: var(--ghost); color: var(--ghost); }
+.travel-gate-note button:disabled { cursor: not-allowed; opacity: .5; }
+
 /* M4.5 readability pass: retain the ink-dark palette without burying the text. */
 .travel-heading p { color: var(--paper); font-size: .82rem; }
 .travel-kicker { color: var(--sick-gold); font-size: .62rem; }
