@@ -18,6 +18,7 @@ export interface CharacterPageProps {
   save: PlayerSave
   onSaveChange: (result: LoadoutChangeResult) => void
   readOnly?: boolean
+  readOnlyReason?: string
   onEnterBattle?: () => void
 }
 
@@ -80,7 +81,7 @@ function DroppableSlot({ save, slot, label, selected, readOnly, onSelect }: { sa
   </div>
 }
 
-function DetailPanel({ detail, save, selectedSlot, readOnly, onEquip, onSaveChange, onFeedback }: { detail: EntityDetail | undefined; save: PlayerSave; selectedSlot?: LoadoutSlotId; readOnly: boolean; onEquip: () => void; onSaveChange: (result: LoadoutChangeResult) => void; onFeedback: (message: string) => void }) {
+function DetailPanel({ detail, save, selectedSlot, readOnly, readOnlyReason, onEquip, onSaveChange, onFeedback }: { detail: EntityDetail | undefined; save: PlayerSave; selectedSlot?: LoadoutSlotId; readOnly: boolean; readOnlyReason?: string; onEquip: () => void; onSaveChange: (result: LoadoutChangeResult) => void; onFeedback: (message: string) => void }) {
   if (!detail) return <aside className="character-detail"><p>选择一件收藏查看详细规则。</p></aside>
   const item = COLLECTION_BY_ID[detail.id]
   const level = save.levels[detail.id] ?? 1
@@ -107,14 +108,14 @@ function DetailPanel({ detail, save, selectedSlot, readOnly, onEquip, onSaveChan
       {item.category === 'equipment' && <>{rerollPending ? <div className="reroll-choice"><p>候选词条：{rerollPending.affixes.map((id) => AFFIXES_LABEL[id] ?? id).join(' · ')}</p><button type="button" disabled={readOnly} onClick={() => send(resolveReroll(save, true), '已确认新的装备词条。')}>确认重铸{readOnly ? '（劫境结束后可调整）' : ''}</button><button type="button" disabled={readOnly} onClick={() => send(resolveReroll(save, false), '已保留原装备词条。')}>保留原词条{readOnly ? '（劫境结束后可调整）' : ''}</button></div> : <button type="button" disabled={Boolean(rerollReason)} title={rerollReason} onClick={() => send(previewReroll(save, detail.id), `已生成「${detail.name}」的重铸预览。`)}>预览重铸 · {REROLL_ESSENCE_COST} 器华{rerollReason ? `（${rerollReason}）` : ''}</button>}</>}
       <button type="button" className="equip-detail-button" disabled={readOnly} title={readOnly ? '劫境结束后可调整' : undefined} onClick={onEquip}>{selectedSlot ? `装备到${SLOT_LABELS[selectedSlot] ?? '兼容槽位'}${readOnly ? '（劫境结束后可调整）' : ''}` : `装备到兼容槽位${readOnly ? '（劫境结束后可调整）' : ''}`}</button>
     </div>}
-    {readOnly && <p className="readonly-note">劫境进行中：换装、升级和重铸将在本局结束后开放。</p>}
+    {readOnly && <p className="readonly-note">{readOnlyReason ?? '劫境进行中：换装、升级和重铸将在本局结束后开放。'}</p>}
   </aside>
 }
 
 const SLOT_LABELS: Partial<Record<LoadoutSlotId, string>> = { weapon: '武器槽', technique: '功法槽', head: '头冠槽', robe: '法衣槽', feet: '足履槽', charm: '佩饰槽', spirit_0: '左妖灵槽', spirit_1: '右妖灵槽', treasure: '法宝槽', consumable_0: '行用槽一', consumable_1: '行用槽二' }
 const AFFIXES_LABEL: Record<string, string> = { max_hp: '生元', attack: '攻势', defense: '护体', opening_energy: '开场灵力', tag_discount: '同标签减费', shield_power: '护盾增幅', spirit_combo_power: '协击增幅', mark_burst_power: '引爆增幅', sword_finisher_power: '终结增幅' }
 
-export function CharacterPage({ save, onSaveChange, readOnly = false, onEnterBattle }: CharacterPageProps) {
+export function CharacterPage({ save, onSaveChange, readOnly = false, readOnlyReason, onEnterBattle }: CharacterPageProps) {
   const summary = useMemo(() => getLoadoutSummary(save), [save])
   const [selectedId, setSelectedId] = useState<string>(save.loadout.weaponId)
   const [selectedSlot, setSelectedSlot] = useState<LoadoutSlotId>('weapon')
@@ -160,12 +161,13 @@ export function CharacterPage({ save, onSaveChange, readOnly = false, onEnterBat
     emitLoadout(applyLoadoutChange(save, slot, id), oldId)
   }
 
+  const lockedMessage = readOnlyReason ?? '劫境进行中，角色页只读；完成或撤退后可调整配装。'
   return <main className="paper-page character-page">
-    <header className="page-heading character-heading"><div><small>CHARACTER · LOADOUT · INVENTORY</small><h2>角色与行囊</h2></div><div className="character-heading-actions"><span className="build-badge">{summary.buildName}</span><button type="button" disabled={readOnly} onClick={() => onEnterBattle?.()}>{readOnly ? '劫境进行中' : '携此阵试法'}</button></div></header>
-    <p className="character-guide" role="note"><span aria-hidden="true">✦</span>{readOnly ? '劫境进行中，角色页只读；完成或撤退后可调整配装。' : '点击物品查看精确规则；拖动到中央槽位装备，键盘用户可用详情区的装备按钮。'}<button type="button" aria-label="关闭操作提示" onClick={(event) => { event.currentTarget.parentElement?.remove() }}>×</button></p>
+    <header className="page-heading character-heading"><div><small>CHARACTER · LOADOUT · INVENTORY</small><h2>角色与行囊</h2></div><div className="character-heading-actions"><span className="build-badge">{summary.buildName}</span><button type="button" disabled={readOnly} onClick={() => onEnterBattle?.()}>{readOnly ? lockedMessage : '携此阵试法'}</button></div></header>
+    <p className="character-guide" role="note"><span aria-hidden="true">✦</span>{readOnly ? lockedMessage : '点击物品查看精确规则；拖动到中央槽位装备，键盘用户可用详情区的装备按钮。'}<button type="button" aria-label="关闭操作提示" onClick={(event) => { event.currentTarget.parentElement?.remove() }}>×</button></p>
     <DragDropProvider onDragEnd={handleDragEnd}>
       <div className="character-layout">
-        <DetailPanel detail={detail} save={save} selectedSlot={selectedSlot} readOnly={readOnly} onEquip={() => equipSelected()} onSaveChange={onSaveChange} onFeedback={setFeedback} />
+        <DetailPanel detail={detail} save={save} selectedSlot={selectedSlot} readOnly={readOnly} readOnlyReason={lockedMessage} onEquip={() => equipSelected()} onSaveChange={onSaveChange} onFeedback={setFeedback} />
         <section className="character-stage" aria-label="主将配装">
           <div className="stage-header"><div><small>ACTIVE FORMATION</small><h3>{summary.buildName}</h3></div><div className="stage-tags">{summary.tags.map((tag) => <span key={tag}>{tagNames[tag]}</span>)}</div></div>
           <div className="avatar-stage"><div className="mist-ring" aria-hidden="true" /><img src={assetUrl('character_cultivator_full')} alt="无名修士全身像" loading="eager" decoding="async" width="512" height="768" /><div className="avatar-caption"><strong>无名修士</strong><span>炼气试演 · {summary.leader.maxHp} 生元</span></div></div>
