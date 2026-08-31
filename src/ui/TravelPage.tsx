@@ -13,6 +13,7 @@ export interface TravelPageProps {
   offlineError?: string
   onSetMode: (mode: CampaignProgress['mode']) => void
   onEnterBattle: (stageNumber: number) => void
+  onRetryBlocked: (stageNumber: number) => void
   onClaimOffline: () => void
   onOpenLoadout: () => void
   onRetryOffline: () => void
@@ -104,7 +105,7 @@ function LatestReport({ report }: { report?: BattleReport }) {
   </section>
 }
 
-export function TravelPage({ save, session, offlineBusy, offlineError, onSetMode, onEnterBattle, onClaimOffline, onOpenLoadout, onRetryOffline }: TravelPageProps) {
+export function TravelPage({ save, session, offlineBusy, offlineError, onSetMode, onEnterBattle, onRetryBlocked, onClaimOffline, onOpenLoadout, onRetryOffline }: TravelPageProps) {
   const { campaign } = save
   const activeStage = session?.stageNumber ?? (campaign.mode === 'farm' ? Math.max(1, campaign.stableStage) : Math.min(30, campaign.highestClearedStage + 1))
   const [selectedStageNumber, setSelectedStageNumber] = useState<number>()
@@ -129,6 +130,7 @@ export function TravelPage({ save, session, offlineBusy, offlineError, onSetMode
   const mapStyle = { '--travel-map-image': `url('/assets/pixel/${BACKGROUND_FILES[selectedStage.backgroundArtKey] ?? BACKGROUND_FILES.bg_huaiyin_road}')` } as CSSProperties
   const sessionIsCurrent = selectedIsCurrent && session?.stageNumber === currentStage.stageNumber
   const blocked = campaign.lastFailure
+  const farmHint = !blocked && campaign.mode === 'farm' && campaign.stableStage > 0 ? { stageNumber: Math.min(30, campaign.stableStage + 1), fallbackStage: campaign.stableStage } : undefined
   const controlsLocked = offlineBusy || Boolean(pending)
   const battleWarning = sessionIsCurrent && session && session.battle.timeMs >= 60_000 ? session.battle.timeMs >= 150_000 ? '输出不足，再过 30 秒将判定本波失败。' : '久战未决，建议接管斗法或调整构筑。' : undefined
 
@@ -138,7 +140,8 @@ export function TravelPage({ save, session, offlineBusy, offlineError, onSetMode
       <div className="travel-heading-stats" aria-label="游历进度"><div><small>最高通关</small><strong>{stageLabel(campaign.highestClearedStage)} <i>/ 30</i></strong></div><div><small>稳定关</small><strong>{campaign.stableStage ? stageLabel(campaign.stableStage) : '—'}</strong></div><span className={`travel-mode mode-${campaign.mode}`}>{pending ? '等待领取' : offlineBusy ? '正在推演' : MODE_NAMES[campaign.mode]}</span></div>
     </header>
 
-    {blocked && <section className="travel-blocker" role="alert"><div><strong>推进受阻：第 {stageLabel(blocked.stageNumber)} 关未能通过</strong><p>{blocked.reason} 已转至第 {blocked.fallbackStage ? stageLabel(blocked.fallbackStage) : '01'} 关稳定刷取。</p></div><div className="travel-blocker-actions"><button type="button" onClick={onOpenLoadout}>调整构筑</button><button type="button" onClick={() => onEnterBattle(blocked.stageNumber)}>重新挑战</button></div></section>}
+    {blocked && <section className="travel-blocker" role="alert"><div><strong>推进受阻：第 {stageLabel(blocked.stageNumber)} 关未能通过</strong><p>{blocked.reason} 已转至第 {blocked.fallbackStage ? stageLabel(blocked.fallbackStage) : '01'} 关稳定刷取；稳定关不会自动跳到下一关。</p></div><div className="travel-blocker-actions"><button type="button" onClick={onOpenLoadout}>调整构筑</button><button type="button" onClick={() => onRetryBlocked(blocked.stageNumber)}>重新挑战</button></div></section>}
+    {farmHint && <section className="travel-blocker travel-farm-hint" role="status"><div><strong>当前正在刷取第 {stageLabel(farmHint.fallbackStage)} 关稳定关</strong><p>稳定刷取不会自动进入下一关；准备好后可继续推进第 {stageLabel(farmHint.stageNumber)} 关。</p></div><div className="travel-blocker-actions"><button type="button" onClick={() => onRetryBlocked(farmHint.stageNumber)}>继续推进</button></div></section>}
     {offlineBusy && <p className="travel-state-banner" role="status" aria-live="polite">正在推演离线游历，推进与模式切换暂时锁定……</p>}
     {offlineError && <p className="travel-state-banner is-error" role="alert">{offlineError} <button type="button" onClick={onRetryOffline}>我知道了</button></p>}
     {pending && <p className="travel-state-banner is-pending" role="status">离线报告待领取，领取前游历暂停。可先查看报告，再确认结算。</p>}

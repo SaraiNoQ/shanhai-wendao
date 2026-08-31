@@ -10,6 +10,7 @@ import {
   createStageSession,
   nextCampaignStage,
   settleStage,
+  setCampaignMode,
   simulateCampaign,
   summarizeBattle,
   type StageSession,
@@ -105,6 +106,12 @@ describe('M4 campaign content and sessions', () => {
     }
     const settled = settleStage(save, withStatus(createStageSession(save, 4), 'victory'))
     expect(settled.campaign.lastFailure).toEqual(save.campaign.lastFailure)
+  })
+
+  it('returns to the blocked next stage after an explicit advance action', () => {
+    const base = createPlayerSave(0)
+    const save = { ...base, campaign: { ...base.campaign, highestClearedStage: 16, stableStage: 16, mode: 'farm' as const } }
+    expect(nextCampaignStage(setCampaignMode(save, 'advance'))).toBe(17)
   })
 
   it('clears the failure reminder after successfully passing the blocked stage', () => {
