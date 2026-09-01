@@ -9,7 +9,7 @@ describe('worker api', () => {
     await expect(response.json()).resolves.toEqual({
       status: 'ok',
       service: 'shanhai-wendao',
-      version: 'm5.6',
+      version: 'm5.6.1',
     })
   })
 

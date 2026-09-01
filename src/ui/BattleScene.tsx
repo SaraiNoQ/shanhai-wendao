@@ -1,28 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { assetUrl as gameAssetUrl } from '../content/assets'
-import type { BattleCardReference, BattleEvent, BattleState, UnitId, UnitState } from '../game/types'
-import './BattleScene.css'
-
-export type BattleVisualCue = {
-  key: string
-  kind: 'hit' | 'heal' | 'shield' | 'card' | 'summon' | 'phase'
-  sourceId?: string
-  targetId?: UnitId
-  amount?: number
-}
-
+import type { BattleCardReference, BattleEvent, BattleState } from '../game/types'
+import { battleEventsToVisualCues, getBattleUnitLayout } from './battle-visuals'
 // eslint-disable-next-line react/only-export-components
-export function battleEventsToVisualCues(events: readonly BattleEvent[]): BattleVisualCue[] {
-  return events.flatMap((event, index): BattleVisualCue[] => {
-    if (event.type === 'damage') return [{ key: `${index}:${event.type}:${event.atMs}`, kind: 'hit', sourceId: event.sourceId, targetId: event.targetId, amount: event.amount + event.shieldAbsorbed }]
-    if (event.type === 'heal') return [{ key: `${index}:${event.type}:${event.atMs}`, kind: 'heal', sourceId: event.sourceId, targetId: event.targetId, amount: event.amount }]
-    if (event.type === 'shield') return [{ key: `${index}:${event.type}:${event.atMs}`, kind: 'shield', sourceId: event.sourceId, targetId: event.targetId, amount: event.amount }]
-    if (event.type === 'card_played') return [{ key: `${index}:${event.type}:${event.atMs}`, kind: 'card', sourceId: event.cardId }]
-    if (event.type === 'unit_summoned') return [{ key: `${index}:${event.type}:${event.atMs}`, kind: 'summon', sourceId: event.sourceId, targetId: event.unitId }]
-    if (event.type === 'boss_phase_changed') return [{ key: `${index}:${event.type}:${event.atMs}`, kind: 'phase' }]
-    return []
-  })
-}
+export { battleEventsToVisualCues, getBattleUnitLayout } from './battle-visuals'
+// eslint-disable-next-line react/only-export-components
+export type { BattleUnitVisual, BattleVisualCue } from './battle-visuals'
+import './BattleScene.css'
 
 export interface BattleSceneProps {
   battle: BattleState<BattleCardReference>
@@ -31,8 +15,6 @@ export interface BattleSceneProps {
   reducedMotion?: boolean
   className?: string
 }
-
-function unitKey(unit: UnitState, index: number) { return `${unit.id}:${index}` }
 
 interface BattlePixiScene {
   updateState: (battle: BattleState<BattleCardReference>) => void
@@ -53,15 +35,13 @@ async function createBattlePixiScene(host: HTMLDivElement, initial: BattleState<
   app.stage.addChild(root, effects)
   const spriteMap = new Map<string, import('pixi.js').Sprite>()
   let cursor = 0
+  let currentState = initial
   let motionReduced = reducedMotion
   let destroyed = false
 
-  const pointFor = (id: string | undefined, state: BattleState<BattleCardReference>) => {
-    if (id === 'leader') return { x: 0.2, y: 0.64 }
-    const spiritIndex = state.spirits.findIndex((spirit) => spirit.id === id)
-    if (spiritIndex >= 0) return { x: 0.34, y: spiritIndex ? 0.66 : 0.46 }
-    const enemyIndex = state.enemies.findIndex((enemy) => enemy.id === id)
-    return enemyIndex >= 0 ? { x: 0.76 + (enemyIndex % 3) * 0.08, y: 0.34 + Math.floor(enemyIndex / 3) * 0.2 } : { x: 0.5, y: 0.5 }
+  const pointFor = (id: string | undefined, state: BattleState<BattleCardReference>, fallback: 'center' | 'leader' = 'center') => {
+    const layout = getBattleUnitLayout(state)
+    return layout.find((unit) => unit.unitId === id) ?? (fallback === 'leader' ? layout.find((unit) => unit.unitId === 'leader') : undefined) ?? { x: 0.5, y: 0.5 }
   }
 
   const draw = async (state: BattleState<BattleCardReference>) => {
@@ -81,16 +61,19 @@ async function createBattlePixiScene(host: HTMLDivElement, initial: BattleState<
       root.addChild(background)
     } catch { /* static fallback remains visible below the canvas */ }
     root.addChild(new pixi.Graphics().rect(0, 0, width, height).fill({ color: 0x07100d, alpha: 0.38 }))
-    const units = [...state.spirits, ...state.enemies, state.leader]
-    await Promise.all(units.map(async (unit, index) => {
+    const units = getBattleUnitLayout(state)
+    await Promise.all(units.map(async (visual) => {
+      const collection = visual.side === 'enemy' ? state.enemies : [state.leader, ...state.spirits]
+      const unit = collection[visual.index]
+      const key = visual.key
       const url = gameAssetUrl(unit.artKey ?? '')
-      if (!url) return
       try {
+        if (!url) throw new Error('missing art')
         const texture = await pixi.Assets.load(url)
         texture.source.scaleMode = 'nearest'
         const sprite = new pixi.Sprite(texture)
-        const point = pointFor(unit.id, state)
-        const scale = unit.id === 'leader' ? 0.3 : state.enemies.some((enemy) => enemy.id === unit.id) ? 0.22 : 0.18
+        const point = visual
+        const scale = visual.scale
         sprite.anchor.set(0.5, 0.7)
         sprite.width = 256 * scale
         sprite.height = 256 * scale
@@ -98,19 +81,33 @@ async function createBattlePixiScene(host: HTMLDivElement, initial: BattleState<
         sprite.y = point.y * height
         sprite.alpha = unit.hp > 0 ? 0.95 : 0.2
         root.addChild(sprite)
-        spriteMap.set(unitKey(unit, index), sprite)
+        spriteMap.set(key, sprite)
       } catch { /* units without an image stay represented by the DOM cards */ }
+      if (!spriteMap.has(key)) {
+        const shadow = new pixi.Graphics().ellipse(0, 0, 52 * visual.scale / 0.22, 70 * visual.scale / 0.22).fill({ color: 0x101614, alpha: 0.9 })
+        shadow.x = visual.x * width; shadow.y = visual.y * height; shadow.pivot.set(0, 35 * visual.scale / 0.22)
+        shadow.alpha = unit.hp > 0 ? 0.9 : 0.2
+        root.addChild(shadow)
+        const label = new pixi.Text({ text: unit.name?.[0] ?? '?', style: { fill: 0xd8c6a0, fontSize: 24, fontFamily: 'serif' } })
+        label.anchor.set(0.5); label.x = shadow.x; label.y = shadow.y - 20
+        root.addChild(label)
+        spriteMap.set(key, shadow as unknown as import('pixi.js').Sprite)
+      }
     }))
   }
 
   const updateState = (state: BattleState<BattleCardReference>) => {
+    currentState = state
     const width = Math.max(1, host.clientWidth || 960)
     const height = Math.max(1, host.clientHeight || width * 9 / 16)
-    const units = [...state.spirits, ...state.enemies, state.leader]
-    units.forEach((unit, index) => {
-      const sprite = spriteMap.get(unitKey(unit, index))
+    const units = getBattleUnitLayout(state)
+    units.forEach((visual) => {
+      const collection = visual.side === 'enemy' ? state.enemies : [state.leader, ...state.spirits]
+      const unit = collection[visual.index]
+      const key = visual.key
+      const sprite = spriteMap.get(key)
       if (!sprite) return
-      const point = pointFor(unit.id, state)
+      const point = visual
       sprite.x = point.x * width
       sprite.y = point.y * height
       sprite.alpha = unit.hp > 0 ? 0.95 : 0.2
@@ -118,22 +115,23 @@ async function createBattlePixiScene(host: HTMLDivElement, initial: BattleState<
   }
 
   const pushEvents = (nextEvents: readonly BattleEvent[]) => {
-    if (nextEvents.length < cursor) cursor = 0
-    const cues = battleEventsToVisualCues(nextEvents).slice(cursor)
-    cursor = battleEventsToVisualCues(nextEvents).length
+    const allCues = battleEventsToVisualCues(nextEvents)
+    if (allCues.length < cursor) cursor = 0
+    const cues = allCues.slice(cursor)
+    cursor = allCues.length
     if (motionReduced) return
     const width = Math.max(1, host.clientWidth || 960)
     const height = Math.max(1, host.clientHeight || width * 9 / 16)
     for (const cue of cues.slice(-12)) {
-      if (cue.kind === 'phase') {
+      if (cue.kind === 'phase' || cue.kind === 'wave' || cue.kind === 'end') {
         const flash = new pixi.Graphics().rect(0, 0, width, height).fill({ color: 0xc74e39, alpha: 0.24 })
         effects.addChild(flash)
         window.setTimeout(() => flash.destroy(), 480)
         continue
       }
-      const source = pointFor(cue.sourceId, initial)
-      const target = pointFor(cue.targetId, initial)
-      const color = cue.kind === 'hit' ? 0xd35d46 : cue.kind === 'shield' ? 0xd0ad64 : cue.kind === 'heal' ? 0x8fd4bd : 0xf0dda8
+      const source = pointFor(cue.sourceId, currentState, 'leader')
+      const target = pointFor(cue.targetId, currentState)
+      const color = cue.kind === 'hit' ? 0xd35d46 : cue.kind === 'shield' || cue.kind === 'buff' ? 0xd0ad64 : cue.kind === 'heal' ? 0x8fd4bd : 0xf0dda8
       const line = new pixi.Graphics().moveTo(source.x * width, source.y * height).lineTo(target.x * width, target.y * height).stroke({ width: 3, color, alpha: 0.85 })
       effects.addChild(line)
       window.setTimeout(() => line.destroy(), cue.kind === 'card' ? 360 : 260)
