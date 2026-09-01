@@ -3,6 +3,7 @@ import { xoroshiro128plus, xoroshiro128plusFromState } from 'pure-rand/generator
 import { PROTOTYPE_CONTENT } from '../content/prototype'
 import { COLLECTIBLE_EFFECTS } from '../content/effects'
 import type { Archetype, BattleCardInstance, BattleCardReference, BattleCommand, BattleContent, BattleEvent, BattleSetup, BattleState, BattleTransition, BuildId, CardDefinition, CardId, ComboId, EnemyDefinition, EnemyId, SpiritId, UnitDefinition, UnitId, UnitState } from './types'
+import { getDamageBreakdown } from './combat-math'
 
 const STEP_MS = 250
 const MAX_HAND = 4
@@ -181,7 +182,8 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
     collectibleLevels: { ...(modifiers?.collectibleLevels ?? {}) },
     equipmentIds,
     affixIds,
-    cardDiscountCharges: (affixIds.includes('tag_discount') ? 1 : 0) + (has('equipment_wind_chasing_shoes') ? 1 : 0),
+    cardDiscountCharges: has('equipment_wind_chasing_shoes') ? 1 : 0,
+    tagDiscountCharges: affixIds.filter((id) => id === 'tag_discount').length,
     playedCardIds: [],
     talismanCardStreak: 0,
     firstCardShieldGranted: false,
@@ -200,7 +202,6 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
 }
 
 function currentEnemy(state: BattleState<CardRef>) { return state.enemies.find((enemy) => enemy.hp > 0) }
-function effectiveDefense(unit: UnitState) { return Math.max(0, unit.defense - Math.floor(unit.defense * unit.armorBreak * 0.05)) }
 
 function currentBoss(state: BattleState<CardRef>) { return state.enemies.find((enemy) => enemy.id === 'ancient_huai_matriarch' && enemy.hp > 0) }
 function hasModifier(state: BattleState<CardRef>, id: string) { return state.equipmentIds.includes(id) || state.affixIds.includes(id) }
@@ -293,8 +294,8 @@ function applyIncoming(state: BattleState<CardRef>, sourceId: SourceId, target: 
 function dealDamage(state: BattleState<CardRef>, sourceId: SourceId, sourceAttack: number, target: UnitState, powerPercent: number, events: BattleEvent[]) {
   let adjustedPower = powerPercent
   if (target.id === 'ancient_huai_matriarch' && state.bossDominantTag) adjustedPower = sourceTag(state, sourceId) === state.bossDominantTag ? Math.floor(powerPercent * 75 / 100) : Math.floor(powerPercent * 110 / 100)
-  const raw = Math.floor((sourceAttack * adjustedPower) / (100 + effectiveDefense(target)))
-  applyIncoming(state, sourceId, target, Math.max(1, raw), events)
+  const breakdown = getDamageBreakdown({ attack: sourceAttack, powerPercent: adjustedPower, defense: target.defense, armorBreak: target.armorBreak })
+  applyIncoming(state, sourceId, target, breakdown.damagePerHit, events)
 }
 
 function dealFlatDamage(state: BattleState<CardRef>, sourceId: SourceId, target: UnitState, amount: number, events: BattleEvent[]) {
@@ -448,13 +449,28 @@ function resolveCardInstance(state: BattleState<CardRef>, value: CardRef | strin
   return undefined
 }
 
+function weaponTag(state: BattleState<CardRef>): Archetype | undefined {
+  return PROTOTYPE_CONTENT.weapons[state.weaponId]?.tag
+}
+
+function isWeaponTagCard(state: BattleState<CardRef>, card: CardDefinition) {
+  const tag = weaponTag(state)
+  return tag !== undefined && card.tags.includes(tag)
+}
+
+function hasTagDiscount(state: BattleState<CardRef>, card: CardDefinition) {
+  const tag = weaponTag(state)
+  return (state.tagDiscountCharges ?? 0) > 0 && isWeaponTagCard(state, card) && (state.cardTagCounts[tag!] ?? 0) === 0
+}
+
 export function getEffectiveCardCost(state: BattleState<CardRef>, card: CardDefinition, cardInstance?: CardRef | string) {
   let discount = 0
   if (card.id === 'mountain_splitter') discount += state.nextFinisherDiscount
   if (card.tags.includes('talisman') && state.talismanDiscountCharges > 0) discount += 1
   if (card.kind === '敕令') discount += state.nextEdictDiscount
   if (card.id === state.discountedCardId) discount += 1
-  if (state.cardDiscountCharges > 0 && !state.playedCardIds.includes(card.id)) discount += 1
+  if ((state.cardDiscountCharges ?? 0) > 0 && isWeaponTagCard(state, card)) discount += 1
+  if (hasTagDiscount(state, card)) discount += 1
   if (resolveCardInstance(state, cardInstance)?.upgraded) discount += 1
   return Math.max(0, card.cost - discount)
 }
@@ -574,6 +590,8 @@ function consumeDiscounts(state: BattleState<CardRef>, card: CardDefinition) {
   if (card.tags.includes('talisman') && state.talismanDiscountCharges > 0) state.talismanDiscountCharges -= 1
   if (card.kind === '敕令' && state.nextEdictDiscount) state.nextEdictDiscount = 0
   if (card.id === state.discountedCardId) state.discountedCardId = undefined
+  if ((state.cardDiscountCharges ?? 0) > 0 && isWeaponTagCard(state, card)) state.cardDiscountCharges -= 1
+  if (hasTagDiscount(state, card)) state.tagDiscountCharges -= 1
 }
 
 function playCard(state: BattleState<CardRef>, cardId: CardId | undefined, cardInstanceId: string | undefined, targetId: UnitId | undefined, content: BattleContent, events: BattleEvent[], automatic: boolean) {
@@ -594,7 +612,6 @@ function playCard(state: BattleState<CardRef>, cardId: CardId | undefined, cardI
   if (exhaust) events.push({ type: 'card_exhausted', cardId: selectedCardId, instanceId: isBattleCardInstance(selected.value) ? selected.value.instanceId : undefined, atMs: state.timeMs })
   else state.discard.push(selected.value)
   state.cardsPlayed += 1
-  if (state.cardDiscountCharges > 0 && !state.playedCardIds.includes(selectedCardId)) state.cardDiscountCharges -= 1
   if (!state.playedCardIds.includes(selectedCardId)) state.playedCardIds.push(selectedCardId)
   if (card.tags.includes('sword')) {
     state.talismanCardStreak = 0
@@ -609,7 +626,7 @@ function playCard(state: BattleState<CardRef>, cardId: CardId | undefined, cardI
   applyCardEffect(state, card, resolvedTarget, events)
 
   const tag = card.tags[0]
-  state.cardTagCounts[tag] += 1
+  for (const cardTag of new Set(card.tags)) state.cardTagCounts[cardTag] += 1
   state.sameTagStreak = state.lastPlayerCardTag === tag ? state.sameTagStreak + 1 : 1
   state.lastPlayerCardTag = tag
   if (state.sameTagStreak >= 3) {
@@ -657,7 +674,7 @@ function applyTreasure(state: BattleState<CardRef>, treasureId: string | undefin
   return true
 }
 
-function applyConsumable(state: BattleState<CardRef>, consumableId: string | undefined, slot: number | undefined, targetId: UnitId | undefined, events: BattleEvent[]) {
+function applyConsumable(state: BattleState<CardRef>, consumableId: string | undefined, slot: number | undefined, targetId: UnitId | undefined, content: BattleContent, events: BattleEvent[]) {
   if (state.status !== 'active') return false
   const id = consumableId ?? Object.keys(state.consumableUses)[slot ?? 0]
   if (!id || (state.consumableUses[id] ?? 0) <= 0) return false
@@ -667,7 +684,13 @@ function applyConsumable(state: BattleState<CardRef>, consumableId: string | und
     case 'consumable_spring_return_pill': heal(state, id, state.leader, Math.floor(state.leader.maxHp * effectValue(state, id, 'healPercent', 35) / 100), events); break
     case 'consumable_spirit_gathering_pill': gainEnergy(state, 3, events); break
     case 'consumable_meridian_guard_pill': addShield(state, id, state.leader, effectValue(state, id, 'shield', 40), events); break
-    case 'consumable_evil_breaking_talisman': if (enemy) { enemy.attackBonusPercent = 0; addArmorBreak(state, enemy, 2, events) }; break
+    case 'consumable_evil_breaking_talisman': if (enemy) {
+      const baseline = content.enemies.find((definition) => definition.id === enemy.id)?.attack ?? content.enemyDefinitions[enemy.id as EnemyId]?.attack ?? enemy.attack
+      enemy.attack = baseline
+      enemy.attackBonusPercent = 0
+      events.push({ type: 'enemy_buff', targetId: enemy.id as EnemyId, status: 'attack', value: enemy.attack, atMs: state.timeMs })
+      addArmorBreak(state, enemy, 2, events)
+    }; break
     case 'consumable_armor_escape_talisman': if (target && target.hp > 0) addShield(state, id, target, effectValue(state, id, 'shield', 50), events); else return false; break
     case 'consumable_thunder_summoning_talisman': state.enemies.filter((unit) => unit.hp > 0).forEach((unit) => { dealDamage(state, id, state.leader.attack, unit, effectValue(state, id, 'powerPercent', 120), events); detonateMarks(state, id, unit, 1, events) }); break
     default: return false
@@ -821,7 +844,7 @@ export function transitionBattle<CardReference extends CardRef>(current: BattleS
       break
     case 'play_card': playCard(state, command.cardId, command.cardInstanceId, command.targetId, content, events, false); break
     case 'use_treasure': applyTreasure(state, command.treasureId, events); break
-    case 'use_consumable': applyConsumable(state, command.consumableId, command.slot, command.targetId, events); break
+    case 'use_consumable': applyConsumable(state, command.consumableId, command.slot, command.targetId, content, events); break
     case 'set_autoplay': state.autoplay = command.enabled; break
     case 'reorder_priority': if (validPriority(command.cardIds, state, content)) state.autoplayPriority = [...command.cardIds]; break
   }

@@ -177,6 +177,28 @@ type EffectSpec = {
 - `ChapterDefinition.unlockAfterStage` 为 `0/10/20`；章节地图每次只显示当前章节的 10 个节点，`mapPosition` 为百分比坐标，节点保持 DOM 可访问性。
 - `GAME_ASSETS` 是运行时图片注册表，必须记录稳定键、文件、宽高、用途和 Bundle；未生成素材继续使用 CSS 占位。
 
+### 7.6 M5.6 角色数值与熔炼预留
+
+角色页展示的战斗数值必须来自规则函数，而不是 JSX 常量：
+
+```ts
+type DamageBreakdown = {
+  attack: number
+  powerPercent: number
+  hits: number
+  effectiveDefense: number
+  damagePerHit: number
+  totalDamage: number
+}
+```
+
+- 有效护体为 `max(0, defense - floor(defense × armorBreak × 5 / 100))`；每段伤害为 `max(1, floor(attack × powerPercent / (100 + effectiveDefense)))`。
+- 基础战力为全队有效生元总和加 10 秒无甲自动攻击伤害；不计卡牌条件、Combo 或敌人机制，不作为关卡门槛。
+- 时间在界面显示为秒，伤害、治疗、护盾、费用和层数显示最终向下取整后的整数。
+- 角色页只保留六个主装备槽；妖灵、法宝丹药、术法通过页签管理，不为未来内容创建空存档字段。
+
+M5.7 熔炼使用一条成长线：精炼提升 `levels[weaponId]`，突破开放下一段等级并触发固定专属节点，升阶仅改变品阶显示；未实现前不改变 `saveVersion`。
+
 ## 8. 内容提交检查
 
 新增或修改内容时确认：

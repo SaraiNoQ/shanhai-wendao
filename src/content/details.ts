@@ -39,7 +39,7 @@ export interface EntityDetail {
 const categoryNames: Record<CollectionCategory, string> = { weapon: '武器', equipment: '装备', technique: '功法', card: '术法', treasure: '法宝', consumable: '配方', spirit: '妖灵' }
 const tagNames: Record<Archetype, string> = { sword: '剑意', talisman: '符咒', spirit: '御灵' }
 const statLabels: Record<string, string> = {
-  powerPercent: '伤害倍率', hits: '攻击段数', swordIntent: '剑意', armorBreak: '破甲层数', shield: '护盾', marks: '符印层数', burn: '灼烧层数', heal: '治疗', delayMs: '延后行动',
+  powerPercent: '伤害倍率', hits: '攻击段数', swordIntent: '剑意', armorBreak: '破甲层数', shield: '护盾', marks: '符印层数', burn: '灼烧层数', heal: '治疗', delayMs: '延后行动', target: '作用目标', targetRule: '目标规则', intentPercent: '每点剑意倍率',
   attackIntervalMs: '行动间隔', maxHp: '最大生元', attack: '攻势', defense: '护体', cost: '灵力费用', cards: '触发牌数', spiritBond: '灵契', shieldPerMark: '每层护盾', discount: '减免费用', energy: '灵力', finisherPercent: '终结倍率', swordIntentCap: '剑意上限', burstPercent: '引爆倍率', burnPerOverflow: '溢出灼烧', leadMs: '提前行动', extendMs: '延长时间', basicAttackPowerPercent: '基础攻击倍率', attackEvery: '攻击次数', cardInterval: '每隔牌数', extraPowerPercent: '额外倍率', marksDetonated: '引爆层数', targets: '目标范围', triggerPercent: '触发生命比例', healPercent: '治疗比例', baseHp: '基础生元', baseAttack: '基础攻势', baseDefense: '基础护体', choices: '选项数', oncePerRun: '每局次数', stageNumber: '关卡编号', waves: '波次数', attackPerLevel: '每级攻势', defenseEveryLevels: '每几级护体', defensePerStep: '护体增量', hpPerLevel: '每级生元', firstComboBond: '首次协击灵契', bondThreshold: '协击阈值', detonateMarks: '引爆判定层数', finisherDiscount: '终结减费', maxDurationMs: '符印上限时间',
 }
 
@@ -90,14 +90,18 @@ function saveAtLevel(save: PlayerSave, id: string, level: number): PlayerSave {
 
 function text(value: unknown) {
   if (typeof value === 'boolean') return value ? '是' : '否'
-  if (typeof value === 'number') return value >= 1_000 ? `${value / 1_000}s` : String(value)
+  if (typeof value === 'number') return String(value)
   return String(value)
 }
 
 function valueText(key: string, value: unknown) {
   if (typeof value === 'number' && key.toLowerCase().includes('percent')) return `${value}%`
-  if (typeof value === 'number' && key.toLowerCase().endsWith('ms')) return `${value}ms`
+  if (typeof value === 'number' && key.toLowerCase().endsWith('ms')) return durationText(value)
   return text(value)
+}
+
+function durationText(value: number) {
+  return `${(value / 1_000).toFixed(2)} 秒`
 }
 
 function effectParamsAtLevel(effect: EffectSpec | undefined, level: number) {
@@ -116,15 +120,25 @@ function cardDetail(card: CardDefinition, save: PlayerSave): EntityDetail {
   const currentContent = battleContentFromSave(save).cards[card.id]
   const nextContent = battleContentFromSave(saveAtLevel(save, card.id, Math.min(10, level + 1))).cards[card.id]
   const values: Array<keyof CardDefinition> = ['cost', 'powerPercent', 'hits', 'swordIntent', 'armorBreak', 'shield', 'marks', 'burn', 'heal', 'delayMs']
-  const currentStats = values.filter((key) => currentContent[key] !== undefined).map((key) => ({ label: statLabels[key] ?? key, value: `${text(currentContent[key])}${key === 'powerPercent' ? '%' : key === 'delayMs' ? 'ms' : ''}` }))
+  const currentStats = values.filter((key) => currentContent[key] !== undefined).map((key) => ({ label: statLabels[key] ?? key, value: key === 'delayMs' ? durationText(Number(currentContent[key])) : `${text(currentContent[key])}${key === 'powerPercent' ? '%' : ''}` }))
   const nextLevelStats = level < 10 ? values.filter((key) => nextContent[key] !== undefined).map((key) => {
     const current = Number(currentContent[key])
     const next = Number(nextContent[key])
-    const unit = key === 'powerPercent' ? '%' : key === 'delayMs' ? 'ms' : ''
-    return { label: statLabels[key] ?? key, value: `${text(next)}${unit}`, delta: next === current ? '不变' : `+${next - current}${unit}` }
+    const unit = key === 'powerPercent' ? '%' : ''
+    return { label: statLabels[key] ?? key, value: key === 'delayMs' ? durationText(next) : `${text(next)}${unit}`, delta: next === current ? '不变' : key === 'delayMs' ? `${((next - current) / 1_000).toFixed(2)} 秒` : `+${next - current}${unit}` }
   }) : undefined
   const effect = EFFECT_SPECS[card.id]
-  return { id: card.id, name: card.name, category: card.kind, summary: card.description, mechanics: [{ label: '目标', value: card.targetRule === 'none' ? '无目标' : card.targetRule === 'all_enemies' ? '全体敌人' : card.targetRule === 'chosen_spirit' ? '指定存活妖灵' : '当前敌人' }, ...effectMechanics(effect)], currentStats, nextLevelStats, tags: card.tags.map((tag) => tagNames[tag]), source: '游历关卡与劫境奖励', artKey: card.artKey, level, owned: save.ownedIds.includes(card.id), effect }
+  const swordIntentCap = save.loadout.equipmentIds.includes('equipment_hidden_edge_jade') ? 12 : 10
+  const dynamicMechanics: EntityMechanic[] = card.effectId === 'sword_finisher'
+    ? [{ label: '剑意范围', value: `0–${swordIntentCap} 点；伤害倍率 ${card.powerPercent ?? 0}%–${(card.powerPercent ?? 0) + swordIntentCap * 45}%` }]
+    : card.effectId === 'sword_intent_barrage'
+      ? [{ label: '攻击段数', value: `当前剑意 0 时 1 段，满剑意时 ${swordIntentCap} 段` }]
+      : card.effectId === 'mark_scaled_strike'
+        ? [{ label: '符印增幅', value: `每层符印 +25% 伤害，最多按 6 层计算` }]
+        : card.effectId === 'spirit_tide'
+          ? [{ label: '状态增幅', value: '目标存在破甲、符印或灼烧时，每只妖灵额外 +40% 伤害' }]
+          : []
+  return { id: card.id, name: card.name, category: card.kind, summary: card.description, mechanics: [{ label: '目标', value: card.targetRule === 'none' ? '无目标' : card.targetRule === 'all_enemies' ? '全体敌人' : card.targetRule === 'chosen_spirit' ? '指定存活妖灵' : '当前敌人' }, ...dynamicMechanics, ...effectMechanics(effect)], currentStats, nextLevelStats, tags: card.tags.map((tag) => tagNames[tag]), source: '游历关卡与劫境奖励', artKey: card.artKey, level, owned: save.ownedIds.includes(card.id), effect }
 }
 
 function weaponDetail(id: keyof typeof PROTOTYPE_CONTENT.weapons, save: PlayerSave): EntityDetail {
@@ -137,7 +151,7 @@ function weaponDetail(id: keyof typeof PROTOTYPE_CONTENT.weapons, save: PlayerSa
   const currentBonus = currentContent.leader.attack - baseContent.leader.attack
   const nextBonus = nextContent.leader.attack - baseContent.leader.attack
   const effect = weapon.effectId ? { effectId: weapon.effectId, params: weapon.effectParams ?? {} } : undefined
-  return { id, name: weapon.name, category: '武器', summary: '决定主将的基础攻击间隔与流派标签。', mechanics: [{ label: '攻击间隔', value: `${weapon.attackIntervalMs}ms` }, { label: '成长', value: '每级主将攻势 +2' }, ...effectMechanics(effect)], currentStats: [{ label: '流派', value: tagNames[weapon.tag] }, { label: '攻击间隔', value: `${weapon.attackIntervalMs}ms` }, { label: '主将攻势加成', value: `+${currentBonus}` }], nextLevelStats: level < 10 ? [{ label: '主将攻势加成', value: `+${nextBonus}`, delta: `+${nextBonus - currentBonus}` }] : undefined, tags: [tagNames[weapon.tag]], source: '炼气试演初始构筑或第 4/10 关解锁', artKey: COLLECTION_BY_ID[id]?.artKey, level, owned: save.ownedIds.includes(id), effect }
+  return { id, name: weapon.name, category: '武器', summary: '决定主将的基础攻击间隔与流派标签。', mechanics: [{ label: '攻击间隔', value: durationText(weapon.attackIntervalMs) }, { label: '成长', value: '每级主将攻势 +2' }, ...effectMechanics(effect)], currentStats: [{ label: '流派', value: tagNames[weapon.tag] }, { label: '攻击间隔', value: durationText(weapon.attackIntervalMs) }, { label: '主将攻势加成', value: `+${currentBonus}` }], nextLevelStats: level < 10 ? [{ label: '主将攻势加成', value: `+${nextBonus}`, delta: `+${nextBonus - currentBonus}` }] : undefined, tags: [tagNames[weapon.tag]], source: '炼气试演初始构筑或第 4/10 关解锁', artKey: COLLECTION_BY_ID[id]?.artKey, level, owned: save.ownedIds.includes(id), effect }
 }
 
 function techniqueDetail(id: keyof typeof PROTOTYPE_CONTENT.techniques, save: PlayerSave): EntityDetail {
@@ -158,8 +172,8 @@ function spiritDetail(id: SpiritId, save: PlayerSave): EntityDetail {
   const current = battleContentFromSave(save).spirits[id]
   const next = battleContentFromSave(saveAtLevel(save, id, Math.min(10, level + 1))).spirits[id]
   const fields: Array<keyof typeof current> = ['maxHp', 'attack', 'defense', 'attackIntervalMs']
-  const currentStats = fields.map((key) => ({ label: statLabels[key] ?? key, value: `${current[key]}${key === 'attackIntervalMs' ? 'ms' : ''}` }))
-  const nextLevelStats = level < 10 ? fields.map((key) => ({ label: statLabels[key] ?? key, value: `${next[key]}${key === 'attackIntervalMs' ? 'ms' : ''}`, delta: next[key] === current[key] ? '不变' : `+${Number(next[key]) - Number(current[key])}` })) : undefined
+  const currentStats = fields.map((key) => ({ label: statLabels[key] ?? key, value: key === 'attackIntervalMs' ? durationText(Number(current[key])) : `${current[key]}` }))
+  const nextLevelStats = level < 10 ? fields.map((key) => ({ label: statLabels[key] ?? key, value: key === 'attackIntervalMs' ? durationText(Number(next[key])) : `${next[key]}`, delta: next[key] === current[key] ? '不变' : key === 'attackIntervalMs' ? `${((Number(next[key]) - Number(current[key])) / 1_000).toFixed(2)} 秒` : `+${Number(next[key]) - Number(current[key])}` })) : undefined
   const effect = current.effectId ? { effectId: current.effectId, params: current.effectParams ?? {} } : undefined
   return { id, name: current.name, category: '妖灵', summary: `${current.title}，可参与自动行动与灵契协击。`, mechanics: [{ label: '行动方式', value: '自动攻击；灵契满 3 点触发协击' }, { label: '标签', value: current.tags.map((tag) => tagNames[tag]).join('、') }, ...effectMechanics(effect)], currentStats, nextLevelStats, tags: current.tags.map((tag) => tagNames[tag]), source: '槐阴古道固定节点与劫境', artKey: current.artKey, level, owned: save.ownedIds.includes(id), effect }
 }
@@ -183,7 +197,7 @@ function enemyDetail(enemy: EnemyDefinition, save: PlayerSave, stageNumber?: num
     ? getStage(stageNumber).waves.flatMap((_, index) => getStageWaveEnemies(getStage(stageNumber), index)).find((value) => value.id === enemy.id) ?? enemy
     : enemy
   const lore = LORE_BY_ID[enemy.id]
-  return { id: enemy.id, name: enemy.name, category: enemy.id === 'ancient_huai_matriarch' ? '首领' : enemy.id === 'borrowed_life_crone' || enemy.id === 'hundred_eyed_branch' || enemy.id === 'paper_armor_envoy' ? '精英' : '敌人', summary: lore?.summary ?? enemy.title, mechanics: [{ label: '行为', value: enemy.title }, { label: '机制', value: enemyMechanics[enemy.id] ?? '标准单体攻击。' }, { label: '行动间隔', value: `${scaled.attackIntervalMs}ms` }], currentStats: [{ label: '生元', value: String(scaled.maxHp) }, { label: '攻势', value: String(scaled.attack) }, { label: '护体', value: String(scaled.defense) }, { label: '关卡缩放', value: stageNumber ? `第 ${stageNumber} 关` : '基础' }], tags: [], source: '槐阴古道关卡与劫境', artKey: enemy.artKey, level, owned: save.discoveredLoreIds.includes(enemy.id), effect: { effectId: enemy.behaviorId, params: { baseHp: enemy.maxHp, baseAttack: enemy.attack, baseDefense: enemy.defense, attackIntervalMs: enemy.attackIntervalMs } } }
+  return { id: enemy.id, name: enemy.name, category: enemy.id === 'ancient_huai_matriarch' ? '首领' : enemy.id === 'borrowed_life_crone' || enemy.id === 'hundred_eyed_branch' || enemy.id === 'paper_armor_envoy' ? '精英' : '敌人', summary: lore?.summary ?? enemy.title, mechanics: [{ label: '行为', value: enemy.title }, { label: '机制', value: enemyMechanics[enemy.id] ?? '标准单体攻击。' }, { label: '行动间隔', value: durationText(scaled.attackIntervalMs) }], currentStats: [{ label: '生元', value: String(scaled.maxHp) }, { label: '攻势', value: String(scaled.attack) }, { label: '护体', value: String(scaled.defense) }, { label: '关卡缩放', value: stageNumber ? `第 ${stageNumber} 关` : '基础' }], tags: [], source: '槐阴古道关卡与劫境', artKey: enemy.artKey, level, owned: save.discoveredLoreIds.includes(enemy.id), effect: { effectId: enemy.behaviorId, params: { baseHp: enemy.maxHp, baseAttack: enemy.attack, baseDefense: enemy.defense, attackIntervalMs: enemy.attackIntervalMs } } }
 }
 
 function eventDetail(id: TrialEventId, save: PlayerSave): EntityDetail {
@@ -205,7 +219,7 @@ export function getEntityDetail(id: string, save: PlayerSave, context: { stageNu
   if (id in TRIAL_EVENTS_BY_ID) return eventDetail(id as TrialEventId, save)
   const stage = STAGES.find((value) => value.id === id)
   if (stage) {
-    const waveDetails = stage.waves.map((_, index) => getStageWaveEnemies(stage, index).map((enemy) => `${enemy.name}（${enemy.maxHp}/${enemy.attack}/${enemy.defense}，${enemy.attackIntervalMs}ms）`).join('、'))
+    const waveDetails = stage.waves.map((_, index) => getStageWaveEnemies(stage, index).map((enemy) => `${enemy.name}（${enemy.maxHp}/${enemy.attack}/${enemy.defense}，${durationText(enemy.attackIntervalMs)}）`).join('、'))
     return {
       id: stage.id,
       name: stage.name,

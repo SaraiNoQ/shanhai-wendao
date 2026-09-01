@@ -257,6 +257,7 @@ export interface BattleState<CardReference extends BattleCardReference = CardId>
   equipmentIds: string[]
   affixIds: string[]
   cardDiscountCharges: number
+  tagDiscountCharges: number
   playedCardIds: CardId[]
   talismanCardStreak: number
   firstCardShieldGranted: boolean

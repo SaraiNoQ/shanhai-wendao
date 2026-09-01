@@ -88,7 +88,7 @@ describe('entity details', () => {
     const save = createPlayerSave(0)
     const stage = getEntityDetail('stage_016', save)
     expect(stage?.mechanics.find((entry) => entry.label === '敌方波次')?.value).toContain('铜钱尸')
-    expect(stage?.mechanics.find((entry) => entry.label === '敌方波次')?.value).toContain('3500ms')
+    expect(stage?.mechanics.find((entry) => entry.label === '敌方波次')?.value).toContain('3.50 秒')
     const event = getEntityDetail('event_roadside_red_sedan', save)
     expect(event?.mechanics).toHaveLength(3)
     expect(event?.mechanics[0].value).toContain('行炁')

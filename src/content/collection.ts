@@ -64,8 +64,8 @@ const equipment = [
   item('equipment_hundred_beast_circlet', '百兽额环', 'equipment', '两只妖灵开场各获得 1 点灵契。', { slot: 'head', tags: ['spirit'], affixSlots: 2, rarity: 'uncommon' }),
   item('equipment_wandering_cloud_robe', '游云道袍', 'equipment', '每场战斗首张牌打出后获得护盾。', { slot: 'robe', tags: ['shield'], affixSlots: 1 }),
   item('equipment_talisman_silk_robe', '法绢纸衣', 'equipment', '引爆符印时，按引爆层数获得护盾。', { slot: 'robe', tags: ['talisman', 'shield'], affixSlots: 2, rarity: 'uncommon' }),
-  item('equipment_mountain_lord_pelt', '山君皮裘', 'equipment', '妖灵协击后减轻主将下一次受伤。', { slot: 'robe', tags: ['spirit'], affixSlots: 2, rarity: 'rare' }),
-  item('equipment_wind_chasing_shoes', '追风履', 'equipment', '前三张不同卡牌的费用总计降低 1 点。', { slot: 'feet', tags: ['sword'], affixSlots: 1 }),
+  item('equipment_mountain_lord_pelt', '山君皮裘', 'equipment', '妖灵协击后，主将获得 8 点护盾。', { slot: 'robe', tags: ['spirit'], affixSlots: 2, rarity: 'rare' }),
+  item('equipment_wind_chasing_shoes', '追风履', 'equipment', '每场战斗首张与武器同标签的牌费用降低 1 点。', { slot: 'feet', tags: ['sword'], affixSlots: 1 }),
   item('equipment_star_treading_shoes', '踏罡履', 'equipment', '连续打出 3 张符法牌后恢复 1 点灵力。', { slot: 'feet', tags: ['talisman'], affixSlots: 2, rarity: 'uncommon' }),
   item('equipment_tracking_straw_sandals', '寻踪草履', 'equipment', '两只妖灵轮流行动时，下一次妖灵伤害提高。', { slot: 'feet', tags: ['spirit'], affixSlots: 2, rarity: 'uncommon' }),
   item('equipment_hidden_edge_jade', '藏锋玉佩', 'equipment', '剑意上限提高 2，终结伤害提高。', { slot: 'charm', tags: ['sword'], affixSlots: 2, rarity: 'rare', artKey: CORE_COLLECTION_ART_KEYS.equipment_hidden_edge_jade }),
@@ -75,8 +75,8 @@ const equipment = [
 
 const treasures = [
   item('treasure_crescent_sword_case', '残月剑匣', 'treasure', '蓄能后释放多段飞剑，读取当前剑意。', { tags: ['sword'], rarity: 'rare', artKey: CORE_COLLECTION_ART_KEYS.treasure_crescent_sword_case }),
-  item('treasure_demon_revealing_mirror', '照妖镜', 'treasure', '揭示弱点，使当前目标承受更多标签伤害。', { rarity: 'uncommon' }),
-  item('treasure_primordial_gourd', '混元葫芦', 'treasure', '恢复灵力，并让下一张高费牌减耗。', { rarity: 'rare' }),
+  item('treasure_demon_revealing_mirror', '照妖镜', 'treasure', '对当前敌人施加 2 层破甲与 1 层符印。', { rarity: 'uncommon' }),
+  item('treasure_primordial_gourd', '混元葫芦', 'treasure', '恢复 3 点灵力，并使下一张一剑开山费用降低 2 点。', { rarity: 'rare' }),
   item('treasure_demon_binding_rope', '缚妖索', 'treasure', '延后敌人下一次行动。', { rarity: 'uncommon' }),
   item('treasure_mountain_river_inkstone', '山河砚', 'treasure', '为全队提供护盾。', { tags: ['shield'], rarity: 'rare', artKey: CORE_COLLECTION_ART_KEYS.treasure_mountain_river_inkstone }),
   item('treasure_soul_summoning_banner', '招魂幡', 'treasure', '两只妖灵立即各获得 2 点灵契。', { tags: ['spirit'], rarity: 'legacy', artKey: CORE_COLLECTION_ART_KEYS.treasure_soul_summoning_banner }),
@@ -86,7 +86,7 @@ const consumables = [
   item('consumable_spring_return_pill', '回春丹', 'consumable', '恢复主将生元。'),
   item('consumable_spirit_gathering_pill', '聚灵丹', 'consumable', '立即恢复 3 点灵力。'),
   item('consumable_meridian_guard_pill', '护脉丹', 'consumable', '主将濒危时自动获得护盾。', { rarity: 'uncommon' }),
-  item('consumable_evil_breaking_talisman', '破煞符', 'consumable', '清除敌方增益并施加破甲。'),
+  item('consumable_evil_breaking_talisman', '破煞符', 'consumable', '清除当前敌人的攻势增益，并施加 2 层破甲。'),
   item('consumable_armor_escape_talisman', '遁甲符', 'consumable', '为一名友方提供大量护盾。', { rarity: 'uncommon' }),
   item('consumable_thunder_summoning_talisman', '召雷符', 'consumable', '伤害全体敌人，对符印目标额外结算。', { rarity: 'rare' }),
 ]

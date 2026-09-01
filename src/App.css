@@ -127,6 +127,7 @@
 .card-illustration img { position: absolute; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
 .card-illustration i { color: rgb(42 52 43 / 72%); font: normal 2.4rem var(--display); }
 .card-text { font: .56rem/1.42 var(--sans); }
+.card-preview-value { color: #115d55; font: 700 .58rem var(--mono); }
 
 .battle-result { position: absolute; z-index: 10; inset: 0; display: grid; place-content: center; text-align: center; background: rgb(2 4 3 / 88%); animation: result-in 350ms steps(4) both; }
 .battle-result > span { color: var(--blood-bright); font: 500 5rem/1 var(--display); text-shadow: 4px 4px 0 #000; }

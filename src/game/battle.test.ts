@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
 import { battleContentFromSave, createPlayerSave } from '../state/player'
 import { createBattle, createBattleCardInstance, getCardAvailability, getEffectiveCardCost, transitionBattle } from './battle'
+import { getBasePower, getCombatStats, getDamageBreakdown } from './combat-math'
 import type { BattleContent, BattleSetup, BattleState, BuildId, CardId, EnemyId } from './types'
 
 function withHand(state: BattleState, hand: CardId[], energy = 10): BattleState {
@@ -270,6 +271,67 @@ describe('deterministic M2 battle', () => {
     const envoyResult = transitionBattle(withHand(envoy.state, ['guiding_edge']), { type: 'play_card', cardId: 'guiding_edge' }, envoy.content)
     expect(envoyResult.events).toContainEqual(expect.objectContaining({ type: 'unit_summoned', unitId: 'paper_child' }))
     expect(envoyResult.state.enemies).toHaveLength(2)
+  })
+})
+
+describe('shared combat math and modifiers', () => {
+  it('calculates defense, armor break, multi-hit, and minimum damage', () => {
+    expect(getDamageBreakdown({ attack: 100, powerPercent: 100, defense: 0 })).toMatchObject({ effectiveDefense: 0, damagePerHit: 100, totalDamage: 100 })
+    expect(getDamageBreakdown({ attack: 100, powerPercent: 100, defense: 50 })).toMatchObject({ effectiveDefense: 50, damagePerHit: 66, totalDamage: 66 })
+    expect(getDamageBreakdown({ attack: 100, powerPercent: 100, defense: 50, armorBreak: 2, hits: 3 })).toMatchObject({ effectiveDefense: 45, damagePerHit: 68, totalDamage: 204, hits: 3 })
+    expect(getDamageBreakdown({ attack: 1, powerPercent: 1, defense: 999 })).toMatchObject({ damagePerHit: 1, totalDamage: 1 })
+  })
+
+  it('uses the shared breakdown for battle damage events', () => {
+    const state = createBattle(35)
+    state.hand = ['guiding_edge']
+    state.deck = []
+    state.discard = []
+    state.energy = 10
+    state.enemies[0].armorBreak = 2
+    const result = transitionBattle(state, { type: 'play_card', cardId: 'guiding_edge' })
+    const damage = result.events.find((event) => event.type === 'damage' && event.sourceId === 'guiding_edge')
+    expect(damage?.type).toBe('damage')
+    if (damage?.type !== 'damage') return
+    const expected = getDamageBreakdown({ attack: state.leader.attack, powerPercent: 80, defense: state.enemies[0].defense, armorBreak: 2 })
+    expect(damage.amount).toBe(expected.damagePerHit)
+  })
+
+  it('restores the enemy attack value when breaking its attack bonus', () => {
+    const content: BattleContent = { ...PROTOTYPE_CONTENT, enemies: [PROTOTYPE_CONTENT.enemyDefinitions.title_seeking_immortal] }
+    const state = createBattle(36, content, { buildId: 'pure_sword', cardInstances: ['guiding_edge'], consumableIds: ['consumable_evil_breaking_talisman'], consumableUses: { consumable_evil_breaking_talisman: 1 } })
+    const enemy = state.enemies[0]
+    enemy.attack = 30
+    enemy.attackBonusPercent = 20
+    const result = transitionBattle(state, { type: 'use_consumable', consumableId: 'consumable_evil_breaking_talisman' }, content)
+    expect(result.state.enemies[0].attack).toBe(content.enemies[0].attack)
+    expect(result.state.enemies[0].attackBonusPercent).toBe(0)
+    expect(result.state.enemies[0].armorBreak).toBe(2)
+    expect(result.events).toContainEqual(expect.objectContaining({ type: 'enemy_buff', status: 'attack', value: content.enemies[0].attack }))
+  })
+
+  it('discounts only the first weapon-tag card', () => {
+    const content: BattleContent = { ...PROTOTYPE_CONTENT, modifiers: { equipmentIds: [], affixIds: ['tag_discount'] } }
+    let state = createBattle(37, content, 'pure_sword')
+    state.hand = ['fire_talisman', 'guiding_edge']
+    state.deck = []
+    state.discard = []
+    state.energy = 10
+    expect(getEffectiveCardCost(state, content.cards.fire_talisman)).toBe(content.cards.fire_talisman.cost)
+    expect(getEffectiveCardCost(state, content.cards.guiding_edge)).toBe(content.cards.guiding_edge.cost - 1)
+    state = transitionBattle(state, { type: 'play_card', cardId: 'fire_talisman' }, content).state
+    expect(getEffectiveCardCost(state, content.cards.guiding_edge)).toBe(content.cards.guiding_edge.cost - 1)
+    state = transitionBattle(state, { type: 'play_card', cardId: 'guiding_edge' }, content).state
+    expect(state.tagDiscountCharges).toBe(0)
+    expect(getEffectiveCardCost(state, content.cards.guiding_edge)).toBe(content.cards.guiding_edge.cost)
+  })
+
+  it('derives readable team stats and explainable base power', () => {
+    const stats = getCombatStats(PROTOTYPE_CONTENT, 'pure_sword', { defense: 20 })
+    expect(stats.basicAttack).toEqual(getDamageBreakdown({ attack: stats.leader.attack, powerPercent: 100, defense: 20 }))
+    expect(stats.basicAttackDps).toBe(stats.basicAttack.totalDamage * 1_000 / stats.leader.attackIntervalMs)
+    expect(stats.basePower).toBe(getBasePower([stats.leader, ...stats.spirits]))
+    expect(stats.teamEffectiveHp).toBeGreaterThan(0)
   })
 })
 

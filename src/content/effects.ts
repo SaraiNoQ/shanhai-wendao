@@ -12,7 +12,7 @@ export const COLLECTIBLE_EFFECTS: Readonly<Record<string, EffectSpec>> = {
   equipment_wandering_cloud_robe: { effectId: 'first_card_shield', params: { shield: 12 }, scalableParams: ['shield'] },
   equipment_talisman_silk_robe: { effectId: 'mark_burst_shield', params: { shieldPerMark: 2 }, scalableParams: ['shieldPerMark'] },
   equipment_mountain_lord_pelt: { effectId: 'spirit_combo_guard', params: { shield: 8 }, scalableParams: ['shield'] },
-  equipment_wind_chasing_shoes: { effectId: 'distinct_card_discount', params: { cards: 3, discount: 1 } },
+  equipment_wind_chasing_shoes: { effectId: 'weapon_tag_discount', params: { discount: 1, target: '武器同标签首张牌' } },
   equipment_star_treading_shoes: { effectId: 'talisman_streak_energy', params: { cards: 3, energy: 1 } },
   equipment_tracking_straw_sandals: { effectId: 'alternating_spirit_damage', params: { powerPercent: 25 } },
   equipment_hidden_edge_jade: { effectId: 'sword_finisher_cap', params: { swordIntentCap: 12, finisherPercent: 108 } },
