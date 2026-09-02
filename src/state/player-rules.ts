@@ -2,6 +2,7 @@ import { AFFIXES, COLLECTION_BY_ID } from '../content/collection'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
 import type { BattleContent } from '../game/types'
 import type { PlayerSave } from './player'
+import { getForgeTier, getTieredEffectParams } from './forging'
 
 /** Pure player-to-battle projection used by both the page and the offline worker. */
 export function battleContentFromSave(save: PlayerSave): BattleContent {
@@ -23,12 +24,14 @@ export function battleContentFromSave(save: PlayerSave): BattleContent {
     const scaled = (value: number | undefined) => value === undefined ? undefined : Math.floor(value * multiplier / 100)
     return [id, { ...card, powerPercent: scaled(card.powerPercent), shield: scaled(card.shield), heal: scaled(card.heal) }]
   })) as BattleContent['cards']
+  const weapons = Object.fromEntries(Object.entries(PROTOTYPE_CONTENT.weapons).map(([id, weapon]) => [id, { ...weapon, effectParams: getTieredEffectParams(id, weapon.effectParams, getForgeTier(save, id)) }])) as BattleContent['weapons']
   return {
     ...PROTOTYPE_CONTENT,
     leader: { ...PROTOTYPE_CONTENT.leader, maxHp: PROTOTYPE_CONTENT.leader.maxHp + maxHp, attack: PROTOTYPE_CONTENT.leader.attack + attack, defense: PROTOTYPE_CONTENT.leader.defense + defense },
     spirits,
+    weapons,
     cards,
-    modifiers: { equipmentIds: [...loadout.equipmentIds], affixIds: equippedAffixes, treasureId: loadout.treasureId, consumableIds: [...loadout.consumableIds], collectibleLevels: { ...save.levels } },
+    modifiers: { equipmentIds: [...loadout.equipmentIds], affixIds: equippedAffixes, treasureId: loadout.treasureId, consumableIds: [...loadout.consumableIds], collectibleLevels: { ...save.levels }, forgeTiers: { ...save.forgeTiers } },
     builds: { ...PROTOTYPE_CONTENT.builds, [loadout.buildId]: { ...PROTOTYPE_CONTENT.builds[loadout.buildId], weaponId: loadout.weaponId, techniqueId: loadout.techniqueId, spiritIds: loadout.spiritIds, cardIds: loadout.cardIds, autoplayPriority: loadout.autoplayPriority } },
   }
 }

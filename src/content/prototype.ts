@@ -1,7 +1,7 @@
 import type { BattleContent, BuildId, BuildPreset, CardDefinition, CardId, EnemyDefinition, EnemyId, SpiritDefinition, SpiritId, TechniqueId, WeaponId } from '../game/types'
 
 function card(id: CardId, name: string, cost: number, kind: CardDefinition['kind'], tags: CardDefinition['tags'], effectId: CardDefinition['effectId'], description: string, params: Partial<CardDefinition> = {}, targetRule: CardDefinition['targetRule'] = 'current_enemy'): CardDefinition {
-  return { id, name, cost, kind, tags, effectId, description, targetRule, ...params }
+  return { id, name, cost, kind, tags, effectId, description, targetRule, ...params, artKey: params.artKey ?? `card_${id}` }
 }
 
 const cards = {

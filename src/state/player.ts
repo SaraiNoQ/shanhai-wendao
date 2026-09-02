@@ -1,21 +1,24 @@
 import { z } from 'zod'
 import { AFFIXES, COLLECTION_BY_ID, EQUIPMENT, type AffixId, type CollectibleDefinition, type EssenceType, type EquipmentSlot } from '../content/collection'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
-import type { BuildId, CardId, SpiritId, TechniqueId, WeaponId } from '../game/types'
+import type { BuildId, CardId, ForgeTier, SpiritId, TechniqueId, WeaponId } from '../game/types'
 import type { BattleReport, CampaignFailure, CampaignProgress, PendingOfflineSettlement } from '../game/campaign'
 import type { TrialRun, TrialSettlement } from '../game/trial'
 import { TRIAL_TILE_KINDS } from '../content/trial'
+import { refineForgeItem, resetForgeItem } from './forging'
 export { battleContentFromSave, receiveCollectible } from './player-rules'
+export { breakthroughForgeItem, getForgeStatus, getForgeTier, isForgeReadOnly, refineForgeItem, resetForgeItem, type ForgeActionResult, type ForgeCost, type ForgeStatus } from './forging'
+export type { ForgeTier } from '../game/types'
 
 export const SAVE_KEY = 'shanhai_wendao_save'
 export const BACKUP_SAVE_KEY = `${SAVE_KEY}_invalid_backup`
-export const SAVE_VERSION = 4
+export const SAVE_VERSION = 5
 const LEVEL_CAP = 10
 const REROLL_COST = 40
 const affixIds = Object.keys(AFFIXES) as AffixId[]
 
 export interface PlayerSave {
-  saveVersion: 4
+  saveVersion: 5
   resources: { cultivation: number; spiritSand: number; daoEssence: number; spiritEssence: number; artifactEssence: number }
   ownedIds: string[]
   levels: Record<string, number>
@@ -24,6 +27,7 @@ export interface PlayerSave {
     equipmentIds: [string, string, string, string]; treasureId: string; consumableIds: [string, string]; autoplayPriority: CardId[]
   }
   equipmentAffixes: Record<string, AffixId[]>
+  forgeTiers: Partial<Record<string, ForgeTier>>
   pendingReroll?: { equipmentId: string; affixes: AffixId[] }
   rerollCount: number
   campaign: CampaignProgress
@@ -35,9 +39,10 @@ export interface PlayerSave {
   readLoreIds: string[]
 }
 
-type LegacyPlayerSave = Omit<PlayerSave, 'saveVersion' | 'campaign' | 'realmId' | 'trialRun' | 'pendingTrialSettlement' | 'settledTrialSourceIds' | 'discoveredLoreIds' | 'readLoreIds'> & { saveVersion: 1 }
-type V2PlayerSave = Omit<PlayerSave, 'saveVersion' | 'realmId' | 'trialRun' | 'pendingTrialSettlement' | 'settledTrialSourceIds' | 'discoveredLoreIds' | 'readLoreIds'> & { saveVersion: 2 }
-type V3PlayerSave = Omit<PlayerSave, 'saveVersion' | 'realmId' | 'trialRun' | 'pendingTrialSettlement' | 'settledTrialSourceIds' | 'discoveredLoreIds' | 'readLoreIds'> & { saveVersion: 3 }
+type LegacyPlayerSave = Omit<PlayerSave, 'saveVersion' | 'campaign' | 'realmId' | 'trialRun' | 'pendingTrialSettlement' | 'settledTrialSourceIds' | 'discoveredLoreIds' | 'readLoreIds' | 'forgeTiers'> & { saveVersion: 1 }
+type V2PlayerSave = Omit<PlayerSave, 'saveVersion' | 'realmId' | 'trialRun' | 'pendingTrialSettlement' | 'settledTrialSourceIds' | 'discoveredLoreIds' | 'readLoreIds' | 'forgeTiers'> & { saveVersion: 2 }
+type V3PlayerSave = Omit<PlayerSave, 'saveVersion' | 'realmId' | 'trialRun' | 'pendingTrialSettlement' | 'settledTrialSourceIds' | 'discoveredLoreIds' | 'readLoreIds' | 'forgeTiers'> & { saveVersion: 3 }
+type V4PlayerSave = Omit<PlayerSave, 'saveVersion' | 'forgeTiers'> & { saveVersion: 4 }
 
 const buildIds = Object.keys(PROTOTYPE_CONTENT.builds) as [BuildId, ...BuildId[]]
 const weaponIds = Object.keys(PROTOTYPE_CONTENT.weapons) as [WeaponId, ...WeaponId[]]
@@ -46,6 +51,7 @@ const spiritIds = Object.keys(PROTOTYPE_CONTENT.spirits) as [SpiritId, ...Spirit
 const cardIds = Object.keys(PROTOTYPE_CONTENT.cards) as [CardId, ...CardId[]]
 
 const resourcesSchema = z.object({ cultivation: z.number().int().nonnegative(), spiritSand: z.number().int().nonnegative(), daoEssence: z.number().int().nonnegative(), spiritEssence: z.number().int().nonnegative(), artifactEssence: z.number().int().nonnegative() })
+const forgeTiersSchema = z.record(z.string(), z.union([z.literal(1), z.literal(2)]))
 const loadoutSchema = z.object({
   buildId: z.enum(buildIds), weaponId: z.enum(weaponIds), techniqueId: z.enum(techniqueIds),
   spiritIds: z.tuple([z.enum(spiritIds), z.enum(spiritIds)]), cardIds: z.tuple([z.enum(cardIds), z.enum(cardIds), z.enum(cardIds), z.enum(cardIds), z.enum(cardIds), z.enum(cardIds)]),
@@ -87,7 +93,7 @@ const legacySaveSchema = z.object({
   rerollCount: z.number().int().nonnegative(),
 })
 
-function validatePlayerShape(save: LegacyPlayerSave | V2PlayerSave | V3PlayerSave | PlayerSave, context: z.RefinementCtx) {
+function validatePlayerShape(save: LegacyPlayerSave | V2PlayerSave | V3PlayerSave | V4PlayerSave | PlayerSave, context: z.RefinementCtx) {
   const owns = (id: string) => save.ownedIds.includes(id)
   const validEquipment = save.loadout.equipmentIds.every((id, index) => COLLECTION_BY_ID[id]?.slot === (['head', 'robe', 'feet', 'charm'] as EquipmentSlot[])[index] && owns(id))
   const validLoadout = validEquipment && COLLECTION_BY_ID[save.loadout.treasureId]?.category === 'treasure' && owns(save.loadout.treasureId)
@@ -95,12 +101,31 @@ function validatePlayerShape(save: LegacyPlayerSave | V2PlayerSave | V3PlayerSav
     && [save.loadout.weaponId, save.loadout.techniqueId, ...save.loadout.spiritIds, ...save.loadout.cardIds].every(owns)
   if (!validLoadout || new Set(save.loadout.equipmentIds).size !== 4 || new Set(save.loadout.consumableIds).size !== 2) context.addIssue({ code: 'custom', message: '配装包含未拥有、重复或错误类别的收藏' })
   if (Object.keys(save.levels).some((id) => !COLLECTION_BY_ID[id]) || Object.keys(save.equipmentAffixes).some((id) => COLLECTION_BY_ID[id]?.category !== 'equipment')) context.addIssue({ code: 'custom', message: '存档包含未知收藏' })
+  const forgeTiers = 'forgeTiers' in save ? save.forgeTiers ?? {} : {}
+  for (const [id, tier] of Object.entries(forgeTiers)) {
+    const item = COLLECTION_BY_ID[id]
+    const level = save.levels[id] ?? 1
+    if (!item || (item.category !== 'weapon' && item.category !== 'equipment')) {
+      context.addIssue({ code: 'custom', message: '熔炼记录包含未知或不可熔炼器物' })
+      continue
+    }
+    if (!owns(id)) context.addIssue({ code: 'custom', message: '熔炼记录包含未拥有器物' })
+    if (tier === 1 && level > 10) context.addIssue({ code: 'custom', message: '一阶器物等级越级' })
+    if (tier === 2 && (level < 10 || level > 20)) context.addIssue({ code: 'custom', message: '二阶器物等级越级' })
+  }
+  for (const [id, level] of Object.entries(save.levels)) {
+    const item = COLLECTION_BY_ID[id]
+    const tier = forgeTiers[id] === 2 ? 2 : 1
+    if (item && (item.category === 'weapon' || item.category === 'equipment') && level > (tier === 2 ? 20 : 10)) context.addIssue({ code: 'custom', message: '器物等级超过当前品阶上限' })
+    if (item && item.category !== 'weapon' && item.category !== 'equipment' && level > 10) context.addIssue({ code: 'custom', message: '收藏等级超过上限' })
+  }
 }
 
 const validatedLegacySaveSchema = legacySaveSchema.superRefine(validatePlayerShape)
 const validatedV2SaveSchema = legacySaveSchema.extend({ saveVersion: z.literal(2), campaign: campaignSchema }).superRefine(validatePlayerShape)
 const validatedV3SaveSchema = legacySaveSchema.extend({ saveVersion: z.literal(3), campaign: campaignSchema }).superRefine(validatePlayerShape)
-const saveSchema = legacySaveSchema.extend({ saveVersion: z.literal(4), campaign: campaignSchema, realmId: z.enum(['qi_refining', 'foundation_established']), trialRun: trialRunSchema, pendingTrialSettlement: trialSettlementSchema, settledTrialSourceIds: z.array(z.string()), discoveredLoreIds: z.array(z.string()), readLoreIds: z.array(z.string()) }).superRefine(validatePlayerShape)
+const validatedV4SaveSchema = legacySaveSchema.extend({ saveVersion: z.literal(4), campaign: campaignSchema, realmId: z.enum(['qi_refining', 'foundation_established']), trialRun: trialRunSchema, pendingTrialSettlement: trialSettlementSchema, settledTrialSourceIds: z.array(z.string()), discoveredLoreIds: z.array(z.string()), readLoreIds: z.array(z.string()) }).superRefine(validatePlayerShape)
+const saveSchema = legacySaveSchema.extend({ saveVersion: z.literal(5), levels: z.record(z.string(), z.number().int().min(1).max(20)), forgeTiers: forgeTiersSchema.default({}), campaign: campaignSchema, realmId: z.enum(['qi_refining', 'foundation_established']), trialRun: trialRunSchema, pendingTrialSettlement: trialSettlementSchema, settledTrialSourceIds: z.array(z.string()), discoveredLoreIds: z.array(z.string()), readLoreIds: z.array(z.string()) }).superRefine(validatePlayerShape)
 
 function initialAffixes() {
   return Object.fromEntries(EQUIPMENT.map((equipment, index) => [equipment.id, affixIds.slice(index % 3, index % 3 + (equipment.affixSlots ?? 1))])) as Record<string, AffixId[]>
@@ -128,20 +153,24 @@ export function createPlayerSave(nowMs = 0): PlayerSave {
       equipmentIds: ['equipment_green_bamboo_crown', 'equipment_wandering_cloud_robe', 'equipment_wind_chasing_shoes', 'equipment_hidden_edge_jade'], treasureId: 'treasure_crescent_sword_case',
       consumableIds: ['consumable_spring_return_pill', 'consumable_spirit_gathering_pill'], autoplayPriority: [...build.cardIds],
     },
-    equipmentAffixes: initialAffixes(), rerollCount: 0, campaign: createCampaign(nowMs), realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [],
+    equipmentAffixes: initialAffixes(), forgeTiers: {}, rerollCount: 0, campaign: createCampaign(nowMs), realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [],
   }
 }
 
 export function migrateSaveV1(save: LegacyPlayerSave, nowMs: number): PlayerSave {
-  return { ...save, saveVersion: 4, campaign: createCampaign(nowMs), realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [] }
+  return { ...save, saveVersion: 5, forgeTiers: {}, campaign: createCampaign(nowMs), realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [] }
 }
 
 export function migrateSaveV2(save: V2PlayerSave): PlayerSave {
-  return { ...save, saveVersion: 4, realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [] }
+  return { ...save, saveVersion: 5, forgeTiers: {}, realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [] }
 }
 
 export function migrateSaveV3(save: V3PlayerSave): PlayerSave {
-  return { ...save, saveVersion: 4, realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [] }
+  return { ...save, saveVersion: 5, forgeTiers: {}, realmId: 'qi_refining', settledTrialSourceIds: [], discoveredLoreIds: [], readLoreIds: [] }
+}
+
+export function migrateSaveV4(save: V4PlayerSave): PlayerSave {
+  return { ...save, saveVersion: 5, forgeTiers: {} }
 }
 
 export function parseSave(text: string, nowMs = 0) {
@@ -149,6 +178,8 @@ export function parseSave(text: string, nowMs = 0) {
     const raw = JSON.parse(text)
     const current = saveSchema.safeParse(raw)
     if (current.success) return current
+    const v4 = validatedV4SaveSchema.safeParse(raw)
+    if (v4.success) return saveSchema.safeParse(migrateSaveV4(v4.data))
     const v3 = validatedV3SaveSchema.safeParse(raw)
     if (v3.success) return saveSchema.safeParse(migrateSaveV3(v3.data))
     const v2 = validatedV2SaveSchema.safeParse(raw)
@@ -176,7 +207,9 @@ export function upgradeCost(item: CollectibleDefinition, level: number) {
 export function upgrade(save: PlayerSave, id: string): PlayerSave {
   const item = COLLECTION_BY_ID[id]
   const level = save.levels[id] ?? 1
-  if (!item || level >= LEVEL_CAP) return save
+  if (!item) return save
+  if (item.category === 'weapon' || item.category === 'equipment') return refineForgeItem(save, id).save
+  if (level >= LEVEL_CAP) return save
   const cost = upgradeCost(item, level)
   if (save.resources.spiritSand < cost.spiritSand || save.resources[cost.essenceType] < cost.essence) return save
   return { ...save, resources: { ...save.resources, spiritSand: save.resources.spiritSand - cost.spiritSand, [cost.essenceType]: save.resources[cost.essenceType] - cost.essence }, levels: { ...save.levels, [id]: level + 1 } }
@@ -185,7 +218,9 @@ export function upgrade(save: PlayerSave, id: string): PlayerSave {
 export function resetLevel(save: PlayerSave, id: string): PlayerSave {
   const item = COLLECTION_BY_ID[id]
   const level = save.levels[id] ?? 1
-  if (!item || level === 1) return save
+  if (!item) return save
+  if (item.category === 'weapon' || item.category === 'equipment') return resetForgeItem(save, id).save
+  if (level === 1) return save
   let spiritSand = 0
   let essence = 0
   for (let paidAt = 1; paidAt < level; paidAt += 1) { spiritSand += paidAt * 100; essence += paidAt * 10 }

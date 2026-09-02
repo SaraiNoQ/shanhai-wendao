@@ -1,4 +1,5 @@
 export type Archetype = 'sword' | 'talisman' | 'spirit'
+export type ForgeTier = 1 | 2
 export type ComboId = 'flying_sword_seal' | 'spirit_edict' | 'dual_spirit_sword'
 export type WeaponId = 'azure_wind_sword' | 'cinnabar_brush' | 'spirit_bell'
 export type TechniqueId = 'hidden_edge_art' | 'edict_talisman_codex' | 'hundred_spirit_codex'
@@ -173,6 +174,7 @@ export interface BattleModifiers {
   treasureId?: string
   consumableIds?: readonly string[]
   collectibleLevels?: Readonly<Record<string, number>>
+  forgeTiers?: Readonly<Partial<Record<string, ForgeTier>>>
 }
 
 export interface BattleSetup {
@@ -248,6 +250,7 @@ export interface BattleState<CardReference extends BattleCardReference = CardId>
   treasureMaxCharge: number
   consumableUses: Record<string, number>
   collectibleLevels: Record<string, number>
+  forgeTiers: Partial<Record<string, ForgeTier>>
   deck: CardReference[]
   hand: CardReference[]
   discard: CardReference[]

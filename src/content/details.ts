@@ -5,8 +5,10 @@ import { STAGES, getStage, getStageWaveEnemies } from './stages'
 import { TRIAL_EVENTS_BY_ID, type TrialEventId } from './trial'
 import { LORE_BY_ID } from './lore'
 import { battleContentFromSave } from '../state/player-rules'
+import { getForgeTier } from '../state/forging'
 import type { PlayerSave } from '../state/player'
 import type { Archetype, CardDefinition, EnemyDefinition, SpiritId } from '../game/types'
+import { FORGE_NODES, FORGE_TIER_CAPS, getTieredEffectParams } from './forging'
 export type { EffectSpec } from './effects'
 
 export interface EntityMechanic {
@@ -128,7 +130,8 @@ function cardDetail(card: CardDefinition, save: PlayerSave): EntityDetail {
     return { label: statLabels[key] ?? key, value: key === 'delayMs' ? durationText(next) : `${text(next)}${unit}`, delta: next === current ? '不变' : key === 'delayMs' ? `${((next - current) / 1_000).toFixed(2)} 秒` : `+${next - current}${unit}` }
   }) : undefined
   const effect = EFFECT_SPECS[card.id]
-  const swordIntentCap = save.loadout.equipmentIds.includes('equipment_hidden_edge_jade') ? 12 : 10
+  const jadeParams = getTieredEffectParams('equipment_hidden_edge_jade', COLLECTIBLE_EFFECTS.equipment_hidden_edge_jade?.params ?? {}, getForgeTier(save, 'equipment_hidden_edge_jade'))
+  const swordIntentCap = save.loadout.equipmentIds.includes('equipment_hidden_edge_jade') && typeof jadeParams.swordIntentCap === 'number' ? jadeParams.swordIntentCap : 10
   const dynamicMechanics: EntityMechanic[] = card.effectId === 'sword_finisher'
     ? [{ label: '剑意范围', value: `0–${swordIntentCap} 点；伤害倍率 ${card.powerPercent ?? 0}%–${(card.powerPercent ?? 0) + swordIntentCap * 45}%` }]
     : card.effectId === 'sword_intent_barrage'
@@ -144,14 +147,21 @@ function cardDetail(card: CardDefinition, save: PlayerSave): EntityDetail {
 function weaponDetail(id: keyof typeof PROTOTYPE_CONTENT.weapons, save: PlayerSave): EntityDetail {
   const weapon = PROTOTYPE_CONTENT.weapons[id]
   const level = save.levels[id] ?? 1
+  const tier = getForgeTier(save, id)
+  const cap = FORGE_TIER_CAPS[tier]
   const atWeapon = { ...save, loadout: { ...save.loadout, weaponId: id } }
   const currentContent = battleContentFromSave(atWeapon)
-  const nextContent = battleContentFromSave(saveAtLevel(atWeapon, id, Math.min(10, level + 1)))
+  const nextContent = battleContentFromSave(saveAtLevel(atWeapon, id, Math.min(cap, level + 1)))
   const baseContent = battleContentFromSave(saveAtLevel(atWeapon, id, 1))
   const currentBonus = currentContent.leader.attack - baseContent.leader.attack
   const nextBonus = nextContent.leader.attack - baseContent.leader.attack
-  const effect = weapon.effectId ? { effectId: weapon.effectId, params: weapon.effectParams ?? {} } : undefined
-  return { id, name: weapon.name, category: '武器', summary: '决定主将的基础攻击间隔与流派标签。', mechanics: [{ label: '攻击间隔', value: durationText(weapon.attackIntervalMs) }, { label: '成长', value: '每级主将攻势 +2' }, ...effectMechanics(effect)], currentStats: [{ label: '流派', value: tagNames[weapon.tag] }, { label: '攻击间隔', value: durationText(weapon.attackIntervalMs) }, { label: '主将攻势加成', value: `+${currentBonus}` }], nextLevelStats: level < 10 ? [{ label: '主将攻势加成', value: `+${nextBonus}`, delta: `+${nextBonus - currentBonus}` }] : undefined, tags: [tagNames[weapon.tag]], source: '炼气试演初始构筑或第 4/10 关解锁', artKey: COLLECTION_BY_ID[id]?.artKey, level, owned: save.ownedIds.includes(id), effect }
+  const effect = weapon.effectId ? { effectId: weapon.effectId, params: currentContent.weapons[id].effectParams ?? {} } : undefined
+  const nextLevelStats = level < cap
+    ? [{ label: '主将攻势加成', value: `+${nextBonus}`, delta: `+${nextBonus - currentBonus}` }]
+      : tier === 1 && FORGE_NODES[id as keyof typeof FORGE_NODES]
+      ? [{ label: '突破节点', value: FORGE_NODES[id as keyof typeof FORGE_NODES].description, delta: '达到筑基后解锁' }]
+      : undefined
+  return { id, name: weapon.name, category: '武器', summary: '决定主将的基础攻击间隔与流派标签。', mechanics: [{ label: '品阶', value: tier === 1 ? '一阶·凡器' : '二阶·法器' }, { label: '攻击间隔', value: durationText(weapon.attackIntervalMs) }, { label: '成长', value: `每级主将攻势 +2；等级上限 ${cap}` }, ...effectMechanics(effect)], currentStats: [{ label: '流派', value: tagNames[weapon.tag] }, { label: '品阶', value: tier === 1 ? '一阶·凡器' : '二阶·法器' }, { label: '攻击间隔', value: durationText(weapon.attackIntervalMs) }, { label: '主将攻势加成', value: `+${currentBonus}` }], nextLevelStats, tags: [tagNames[weapon.tag]], source: '炼气试演初始构筑或第 4/10 关解锁', artKey: COLLECTION_BY_ID[id]?.artKey, level, owned: save.ownedIds.includes(id), effect }
 }
 
 function techniqueDetail(id: keyof typeof PROTOTYPE_CONTENT.techniques, save: PlayerSave): EntityDetail {
@@ -180,14 +190,22 @@ function spiritDetail(id: SpiritId, save: PlayerSave): EntityDetail {
 
 function collectibleDetail(item: CollectibleDefinition, save: PlayerSave): EntityDetail {
   const level = save.levels[item.id] ?? 1
-  const effect = EFFECT_SPECS[item.id]
+  const tier = item.id in FORGE_NODES ? getForgeTier(save, item.id) : 1
+  const cap = item.id in FORGE_NODES ? FORGE_TIER_CAPS[tier] : 10
+  const baseEffect = EFFECT_SPECS[item.id]
+  const effect = baseEffect ? { ...baseEffect, params: getTieredEffectParams(item.id, baseEffect.params, tier) } : undefined
   const currentEffect = effectParamsAtLevel(effect, level)
-  const nextEffect = effectParamsAtLevel(effect, Math.min(10, level + 1))
-  const currentStats: EntityStat[] = [{ label: '稀有度', value: ({ common: '凡品', uncommon: '珍品', rare: '秘品', legacy: '传承' })[item.rarity] }, { label: '等级', value: `${level} / 10` }]
+  const nextEffect = effectParamsAtLevel(effect, Math.min(cap, level + 1))
+  const currentStats: EntityStat[] = [{ label: '稀有度', value: ({ common: '凡品', uncommon: '珍品', rare: '秘品', legacy: '传承' })[item.rarity] }, { label: '等级', value: `${level} / ${cap}` }]
+  if (item.id in FORGE_NODES) currentStats.push({ label: '熔炼品阶', value: tier === 1 ? '一阶·凡器' : '二阶·法器' })
   if (item.slot) currentStats.push({ label: '装备槽', value: ({ head: '头冠', robe: '法衣', feet: '足履', charm: '佩饰' } as Record<EquipmentSlot, string>)[item.slot] })
   if (item.category === 'equipment') currentStats.push(...(save.equipmentAffixes[item.id] ?? []).map((id) => ({ label: '附加词条', value: `${AFFIXES[id].name} +${AFFIXES[id].value}${AFFIXES[id].suffix}` })))
   currentStats.push(...effectMechanics(effect, level).map((entry) => ({ label: entry.label, value: entry.value })))
-  const nextLevelStats = level < 10 ? [{ label: '等级', value: `${level + 1} / 10`, delta: '+1' }, ...effectMechanics(effect, level + 1).map((entry, index) => { const key = Object.keys(nextEffect)[index]; const previous = currentEffect[key]; const next = nextEffect[key]; const delta = typeof previous === 'number' && typeof next === 'number' && next !== previous ? `${next - previous >= 0 ? '+' : ''}${next - previous}` : '不变'; return { label: entry.label, value: entry.value, delta } })] : undefined
+  const nextLevelStats = level < cap
+    ? [{ label: '等级', value: `${level + 1} / ${cap}`, delta: '+1' }, ...effectMechanics(effect, level + 1).map((entry, index) => { const key = Object.keys(nextEffect)[index]; const previous = currentEffect[key]; const next = nextEffect[key]; const delta = typeof previous === 'number' && typeof next === 'number' && next !== previous ? `${next - previous >= 0 ? '+' : ''}${next - previous}` : '不变'; return { label: entry.label, value: entry.value, delta } })]
+    : tier === 1 && FORGE_NODES[item.id as keyof typeof FORGE_NODES]
+      ? [{ label: '突破节点', value: FORGE_NODES[item.id as keyof typeof FORGE_NODES].description, delta: '达到筑基后解锁' }]
+      : undefined
   return { id: item.id, name: item.name, category: categoryNames[item.category], summary: item.summary, mechanics: [{ label: '规则', value: item.summary }, ...effectMechanics(effect, level)], currentStats, nextLevelStats, tags: item.tags.map((tag) => tagNames[tag as Archetype] ?? tag), source: item.unlockSource, artKey: item.artKey, level, owned: save.ownedIds.includes(item.id), effect }
 }
 

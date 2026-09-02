@@ -3,6 +3,8 @@ import { useMemo, useState } from 'react'
 import { COLLECTION, COLLECTION_BY_ID, EQUIPMENT_SLOTS, type CollectionCategory, type CollectibleDefinition, type EquipmentSlot } from '../content/collection'
 import { assetUrl } from '../content/assets'
 import { getEntityDetail, type EntityDetail } from '../content/details'
+import { FORGE_NODES, FORGE_TIER_CAPS } from '../content/forging'
+import { breakthroughForgeItem, getForgeStatus, getForgeTier, isForgeReadOnly, refineForgeItem, resetForgeItem } from '../state/forging'
 import { type PlayerSave, previewReroll, resetLevel, resolveReroll, upgrade, upgradeCost, REROLL_ESSENCE_COST } from '../state/player'
 import { applyLoadoutChange, compatibleSlotForItem, collectibleForSlot, getLoadoutSummary, reorderLoadoutPriority, swapLoadoutSlots, type LoadoutChangeResult, type LoadoutSlotId } from '../state/loadout'
 import { PriorityList } from './PriorityList'
@@ -14,13 +16,14 @@ const tagNames = { sword: '剑意', talisman: '符咒', spirit: '御灵' }
 const comboNames = { flying_sword_seal: '飞剑镇符', spirit_edict: '灵使敕令', dual_spirit_sword: '双灵剑阵' }
 const allCategories = ['all', 'weapon', 'technique', 'spirit', 'equipment', 'treasure', 'consumable', 'card'] as const
 
-type CharacterTab = 'loadout' | 'spirits' | 'utility' | 'spells'
+type CharacterTab = 'loadout' | 'spirits' | 'utility' | 'spells' | 'forge'
 
 const characterTabs: Array<{ id: CharacterTab; label: string; eyebrow: string; categories: readonly CollectionCategory[] }> = [
   { id: 'loadout', label: '配装', eyebrow: 'FORMATION', categories: ['weapon', 'technique', 'equipment'] },
   { id: 'spirits', label: '妖灵', eyebrow: 'SPIRITS', categories: ['spirit'] },
   { id: 'utility', label: '法宝丹药', eyebrow: 'RELICS & PILLS', categories: ['treasure', 'consumable'] },
   { id: 'spells', label: '术法', eyebrow: 'SPELLBOOK', categories: ['card'] },
+  { id: 'forge', label: '熔炉', eyebrow: 'WEAPON & GEAR FORGE', categories: ['weapon', 'equipment'] },
 ]
 
 export interface CharacterCombatPreview {
@@ -43,6 +46,10 @@ export interface CharacterPageProps {
 
 function displayArt(artKey: string | undefined) {
   return artKey ? assetUrl(artKey) ?? `/assets/pixel/${artKey.replaceAll('_', '-')}.png` : undefined
+}
+
+function levelCap(save: PlayerSave, item: CollectibleDefinition) {
+  return item.id in FORGE_NODES ? FORGE_TIER_CAPS[getForgeTier(save, item.id)] : 10
 }
 
 function loadoutIds(save: PlayerSave) {
@@ -78,11 +85,11 @@ function DetailStats({ title, stats }: { title: string; stats: EntityDetail['cur
   return <section className="character-stat-block"><h4>{title}</h4><dl>{stats.map((stat, index) => <div key={`${stat.label}-${index}`}><dt>{stat.label}</dt><dd>{stat.value}{stat.delta && <small>{stat.delta}</small>}</dd></div>)}</dl></section>
 }
 
-function DraggableItem({ item, level, selected, equipped, readOnly, onSelect }: { item: CollectibleDefinition; level: number; selected: boolean; equipped: boolean; readOnly: boolean; onSelect: () => void }) {
+function DraggableItem({ item, level, cap, selected, equipped, readOnly, onSelect }: { item: CollectibleDefinition; level: number; cap: number; selected: boolean; equipped: boolean; readOnly: boolean; onSelect: () => void }) {
   const { ref, isDragging } = useDraggable({ id: `item:${item.id}`, data: { collectibleId: item.id }, disabled: readOnly })
   return <button ref={(node) => ref(node)} type="button" className={`inventory-item rarity-${item.rarity} ${selected ? 'is-selected' : ''} ${equipped ? 'is-equipped' : ''} ${isDragging ? 'is-dragging' : ''}`} onClick={onSelect} title={`${item.name}，点击查看详情，拖入兼容槽位${readOnly ? '（当前只读）' : ''}`}>
     <span className="inventory-item-art">{item.artKey ? <img src={displayArt(item.artKey)} alt="" loading="lazy" decoding="async" /> : <i aria-hidden="true">{item.name.at(0)}</i>}</span>
-    <span className="inventory-item-copy"><strong>{item.name}</strong><small>{categoryNames[item.category]} · Lv.{level}</small>{equipped && <em>已装备</em>}</span>
+    <span className="inventory-item-copy"><strong>{item.name}</strong><small>{categoryNames[item.category]} · Lv.{level} / {cap}</small>{equipped && <em>已装备</em>}</span>
   </button>
 }
 
@@ -95,7 +102,7 @@ function DroppableSlot({ save, slot, label, selected, readOnly, onSelect }: { sa
       <span className="slot-label">{label}</span>
       <span className="slot-glyph">{item?.artKey ? <img src={displayArt(item.artKey)} alt="" loading="lazy" decoding="async" /> : <i aria-hidden="true">{item?.name.at(0) ?? '空'}</i>}</span>
       <strong>{item?.name ?? '空位'}</strong>
-      {item && <small>Lv.{save.levels[item.id] ?? 1}</small>}
+      {item && <small>Lv.{save.levels[item.id] ?? 1} / {levelCap(save, item)}</small>}
     </button>
   </div>
 }
@@ -104,26 +111,27 @@ function DetailPanel({ detail, save, selectedSlot, readOnly, readOnlyReason, com
   if (!detail) return <aside className="character-detail"><p>选择一件收藏查看详细规则。</p></aside>
   const item = COLLECTION_BY_ID[detail.id]
   const level = save.levels[detail.id] ?? 1
+  const cap = item ? levelCap(save, item) : 10
   const owned = save.ownedIds.includes(detail.id)
   const cost = item ? upgradeCost(item, level) : undefined
   const canPay = cost && save.resources.spiritSand >= cost.spiritSand && save.resources[cost.essenceType] >= cost.essence
   const rerollPending = save.pendingReroll?.equipmentId === detail.id ? save.pendingReroll : undefined
   const send = (next: PlayerSave, success: string) => { if (next === save) { onFeedback(readOnly ? '当前状态只读，结束后才可调整角色。' : '资源或条件不足，操作未生效。'); return }; onSaveChange({ save: next, changed: true }); onFeedback(success) }
-  const upgradeReason = readOnly ? '劫境结束后可调整' : level >= 10 ? '已达等级上限' : !canPay ? '资源不足' : undefined
+  const upgradeReason = readOnly ? '劫境结束后可调整' : level >= cap ? '已达等级上限' : !canPay ? '资源不足' : undefined
   const resetReason = readOnly ? '劫境结束后可调整' : level === 1 ? '当前已是 Lv.1' : undefined
   const rerollReason = readOnly ? '劫境结束后可调整' : save.resources.artifactEssence < REROLL_ESSENCE_COST ? '器华不足' : undefined
   return <aside className="character-detail">
     <div className="detail-kicker">{detail.category} · {owned ? '已收录' : '未收录'}</div>
-    {detail.artKey && <div className="detail-art"><img src={displayArt(detail.artKey)} alt="" loading="lazy" decoding="async" /></div>}
+    {owned && detail.artKey && <div className="detail-art"><img src={displayArt(detail.artKey)} alt="" loading="lazy" decoding="async" /></div>}
     <h2>{detail.name}</h2><p className="detail-summary">{detail.summary}</p>
     <div className="detail-tags">{detail.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
     <DetailStats title="当前数值" stats={detail.currentStats} />
-    <DetailStats title={level >= 10 ? '已达上限' : `下一级 · Lv.${level + 1}`} stats={detail.nextLevelStats} />
+    <DetailStats title={level >= cap ? '已达上限' : `下一级 · Lv.${level + 1}`} stats={detail.nextLevelStats} />
     {item?.category === 'card' && combatPreview?.cardPreviews?.[detail.id] && <section className="card-preview-readout"><h4>对当前预览敌人</h4><p>基础结算，不计剑意、符印和 Combo 增益。</p><dl><div><dt>每段伤害</dt><dd>{combatPreview.cardPreviews[detail.id].damagePerHit}</dd></div><div><dt>攻击段数</dt><dd>{combatPreview.cardPreviews[detail.id].hits}</dd></div><div><dt>总伤害</dt><dd>{combatPreview.cardPreviews[detail.id].totalDamage}</dd></div></dl></section>}
     <section className="character-mechanics"><h4>规则说明</h4>{detail.mechanics.map((entry, index) => <p key={`${entry.label}-${index}`}><strong>{entry.label}</strong>{entry.value}</p>)}</section>
-    <dl className="detail-meta"><div><dt>获取来源</dt><dd>{detail.source}</dd></div><div><dt>当前等级</dt><dd>{owned ? `Lv.${level} / 10` : '尚未拥有'}</dd></div></dl>
+    <dl className="detail-meta"><div><dt>获取来源</dt><dd>{detail.source}</dd></div><div><dt>当前等级</dt><dd>{owned ? `Lv.${level} / ${cap}` : '尚未拥有'}</dd></div></dl>
     {item && owned && <div className="character-detail-actions">
-      <button type="button" disabled={Boolean(upgradeReason)} title={upgradeReason} onClick={() => send(upgrade(save, detail.id), `「${detail.name}」已提升至 Lv.${level + 1}。`)}>{level >= 10 ? '已臻圆满' : `升级 · ${cost?.spiritSand} 灵砂 / ${cost?.essence} 精华${upgradeReason ? `（${upgradeReason}）` : ''}`}</button>
+      <button type="button" disabled={Boolean(upgradeReason)} title={upgradeReason} onClick={() => send(upgrade(save, detail.id), `「${detail.name}」已提升至 Lv.${level + 1}。`)}>{level >= cap ? '已臻圆满' : `升级 · ${cost?.spiritSand} 灵砂 / ${cost?.essence} 精华${upgradeReason ? `（${upgradeReason}）` : ''}`}</button>
       <button type="button" disabled={Boolean(resetReason)} title={resetReason} onClick={() => send(resetLevel(save, detail.id), `「${detail.name}」已重置，资源全额返还。`)}>免费重置{resetReason ? `（${resetReason}）` : ''}</button>
       {item.category === 'equipment' && <>{rerollPending ? <div className="reroll-choice"><p>候选词条：{rerollPending.affixes.map((id) => AFFIXES_LABEL[id] ?? id).join(' · ')}</p><button type="button" disabled={readOnly} onClick={() => send(resolveReroll(save, true), '已确认新的装备词条。')}>确认重铸{readOnly ? '（劫境结束后可调整）' : ''}</button><button type="button" disabled={readOnly} onClick={() => send(resolveReroll(save, false), '已保留原装备词条。')}>保留原词条{readOnly ? '（劫境结束后可调整）' : ''}</button></div> : <button type="button" disabled={Boolean(rerollReason)} title={rerollReason} onClick={() => send(previewReroll(save, detail.id), `已生成「${detail.name}」的重铸预览。`)}>预览重铸 · {REROLL_ESSENCE_COST} 器华{rerollReason ? `（${rerollReason}）` : ''}</button>}</>}
       <button type="button" className="equip-detail-button" disabled={readOnly} title={readOnly ? '劫境结束后可调整' : undefined} onClick={onEquip}>{selectedSlot ? `装备到${SLOT_LABELS[selectedSlot] ?? '兼容槽位'}${readOnly ? '（劫境结束后可调整）' : ''}` : `装备到兼容槽位${readOnly ? '（劫境结束后可调整）' : ''}`}</button>
@@ -164,15 +172,52 @@ function EquipmentStage({ save, summary, readOnly, selectedSlot, onSelectSlot, p
 }
 
 function SpiritsStage({ save, summary, readOnly, selectedSlot, onSelectSlot }: { save: PlayerSave; summary: ReturnType<typeof getLoadoutSummary>; readOnly: boolean; selectedSlot: LoadoutSlotId; onSelectSlot: (slot: LoadoutSlotId) => void }) {
-  return <section className="character-stage feature-stage" aria-label="妖灵管理"><StageHeader eyebrow="SPIRIT CONTRACTS" title="妖灵编阵" tags={summary.tags} /><p className="feature-intro">妖灵自动行动；灵契达到 3 点时触发协击。点击槽位查看对应的生元、攻势、护体和行动间隔。</p><div className="feature-slot-row"><DroppableSlot save={save} slot="spirit_0" label="妖灵·左" selected={selectedSlot === 'spirit_0'} readOnly={readOnly} onSelect={() => onSelectSlot('spirit_0')} /><DroppableSlot save={save} slot="spirit_1" label="妖灵·右" selected={selectedSlot === 'spirit_1'} readOnly={readOnly} onSelect={() => onSelectSlot('spirit_1')} /></div><div className="spirit-stat-grid">{summary.spirits.map((spirit, index) => <button type="button" key={spirit.id} className="spirit-stat-card" onClick={() => onSelectSlot(index === 0 ? 'spirit_0' : 'spirit_1')}><strong>{spirit.name}</strong><small>{spirit.title} · Lv.{spirit.level}</small><span>生元 {spirit.maxHp} · 攻势 {spirit.attack} · 护体 {spirit.defense}</span><span>行动间隔 {(spirit.attackIntervalMs / 1_000).toFixed(2)} 秒 · 灵契 0/3</span></button>)}</div><div className="feature-callout"><strong>协击预览</strong><span>{summary.spirits.map((spirit) => spirit.name).join(' ＋ ')}：灵契满层时共同发动一次协击。</span></div></section>
+  return <section className="character-stage feature-stage" aria-label="妖灵管理"><StageHeader eyebrow="SPIRIT CONTRACTS" title="妖灵编阵" tags={summary.tags} /><p className="feature-intro">妖灵自动行动；灵契达到 3 点时触发协击。点击槽位查看对应的生元、攻势、护体和行动间隔。</p><div className="feature-slot-row"><DroppableSlot save={save} slot="spirit_0" label="妖灵·左" selected={selectedSlot === 'spirit_0'} readOnly={readOnly} onSelect={() => onSelectSlot('spirit_0')} /><DroppableSlot save={save} slot="spirit_1" label="妖灵·右" selected={selectedSlot === 'spirit_1'} readOnly={readOnly} onSelect={() => onSelectSlot('spirit_1')} /></div><div className="spirit-stat-grid">{summary.spirits.map((spirit, index) => <button type="button" key={spirit.id} className="spirit-stat-card" onClick={() => onSelectSlot(index === 0 ? 'spirit_0' : 'spirit_1')}><strong>{spirit.name}</strong><small>{spirit.title} · Lv.{spirit.level} / 10</small><span>生元 {spirit.maxHp} · 攻势 {spirit.attack} · 护体 {spirit.defense}</span><span>行动间隔 {(spirit.attackIntervalMs / 1_000).toFixed(2)} 秒 · 灵契 0/3</span></button>)}</div><div className="feature-callout"><strong>协击预览</strong><span>{summary.spirits.map((spirit) => spirit.name).join(' ＋ ')}：灵契满层时共同发动一次协击。</span></div></section>
 }
 
 function UtilityStage({ save, summary, readOnly, selectedSlot, onSelectSlot }: { save: PlayerSave; summary: ReturnType<typeof getLoadoutSummary>; readOnly: boolean; selectedSlot: LoadoutSlotId; onSelectSlot: (slot: LoadoutSlotId) => void }) {
-  return <section className="character-stage feature-stage" aria-label="法宝和丹药管理"><StageHeader eyebrow="RELICS & PILLS" title="法宝丹药" /><p className="feature-intro">法宝蓄能后主动发动；行用配方在游历与劫境中按规则消耗，回城补满次数。</p><div className="utility-slot-layout"><div><DroppableSlot save={save} slot="treasure" label="法宝" selected={selectedSlot === 'treasure'} readOnly={readOnly} onSelect={() => onSelectSlot('treasure')} /></div><div className="utility-consumables"><DroppableSlot save={save} slot="consumable_0" label="行用一" selected={selectedSlot === 'consumable_0'} readOnly={readOnly} onSelect={() => onSelectSlot('consumable_0')} /><DroppableSlot save={save} slot="consumable_1" label="行用二" selected={selectedSlot === 'consumable_1'} readOnly={readOnly} onSelect={() => onSelectSlot('consumable_1')} /></div></div><div className="utility-summary"><div><small>当前法宝</small><strong>{summary.treasure.name}</strong><span>Lv.{summary.treasure.level} · 蓄能 0 / 3</span></div>{summary.consumables.map((item) => <div key={item.id}><small>行用配方</small><strong>{item.name}</strong><span>Lv.{item.level} · 本局次数按规则补满</span></div>)}</div></section>
+  return <section className="character-stage feature-stage" aria-label="法宝和丹药管理"><StageHeader eyebrow="RELICS & PILLS" title="法宝丹药" /><p className="feature-intro">法宝蓄能后主动发动；行用配方在游历与劫境中按规则消耗，回城补满次数。</p><div className="utility-slot-layout"><div><DroppableSlot save={save} slot="treasure" label="法宝" selected={selectedSlot === 'treasure'} readOnly={readOnly} onSelect={() => onSelectSlot('treasure')} /></div><div className="utility-consumables"><DroppableSlot save={save} slot="consumable_0" label="行用一" selected={selectedSlot === 'consumable_0'} readOnly={readOnly} onSelect={() => onSelectSlot('consumable_0')} /><DroppableSlot save={save} slot="consumable_1" label="行用二" selected={selectedSlot === 'consumable_1'} readOnly={readOnly} onSelect={() => onSelectSlot('consumable_1')} /></div></div><div className="utility-summary"><div><small>当前法宝</small><strong>{summary.treasure.name}</strong><span>Lv.{summary.treasure.level} / 10 · 蓄能 0 / 3</span></div>{summary.consumables.map((item) => <div key={item.id}><small>行用配方</small><strong>{item.name}</strong><span>Lv.{item.level} / 10 · 本局次数按规则补满</span></div>)}</div></section>
 }
 
 function SpellsStage({ save, summary, readOnly, selectedSlot, onSelectSlot, onPriorityChange, onFeedback }: { save: PlayerSave; summary: ReturnType<typeof getLoadoutSummary>; readOnly: boolean; selectedSlot: LoadoutSlotId; onSelectSlot: (slot: LoadoutSlotId) => void; onPriorityChange: (cardIds: typeof save.loadout.autoplayPriority) => void; onFeedback: (message: string) => void }) {
   return <section className="character-stage spell-stage" aria-label="术法与自动优先级"><StageHeader eyebrow="SPELLBOOK" title="术法构筑" tags={summary.tags} /><p className="feature-intro">起始牌决定每场战斗的循环；同一套顺序用于手动提示与自动出牌。拖动槽位可替换，优先级使用右侧拖拽或上下按钮调整。</p><div className="spell-slot-grid">{(['card_0', 'card_1', 'card_2', 'card_3', 'card_4', 'card_5'] as LoadoutSlotId[]).map((slot) => <DroppableSlot key={slot} save={save} slot={slot} label={`术法 ${Number(slot.at(-1)) + 1}`} selected={selectedSlot === slot} readOnly={readOnly} onSelect={() => onSelectSlot(slot)} />)}</div><div className="spell-priority"><div className="subsection-heading"><div><small>AUTOPLAY ORDER</small><h4>自动出牌次序</h4></div><span>6 张</span></div><PriorityList cardIds={save.loadout.autoplayPriority} onChange={onPriorityChange} /></div><div className="alternate-skills"><strong>备选术法</strong>{COLLECTION.filter((item) => item.category === 'card' && save.ownedIds.includes(item.id) && !save.loadout.cardIds.includes(item.id as typeof save.loadout.cardIds[number])).slice(0, 8).map((item) => <button key={item.id} type="button" onClick={() => { onSelectSlot(targetSlotFor(save, item.id) ?? 'card_0'); onFeedback(`已选中「${item.name}」，可从详情区装备到起始牌槽。`) }}>{item.name}</button>)}</div></section>
+}
+
+function ForgeStage({ save, item, readOnly, onSaveChange, onFeedback }: { save: PlayerSave; item: CollectibleDefinition; readOnly: boolean; onSaveChange: (result: LoadoutChangeResult) => void; onFeedback: (message: string) => void }) {
+  const node = FORGE_NODES[item.id as keyof typeof FORGE_NODES]
+  const owned = save.ownedIds.includes(item.id)
+  const status = getForgeStatus(save, item.id)
+  const { tier, level, levelCap: cap } = status
+  const locked = readOnly || isForgeReadOnly(save)
+  const canRefine = owned && !locked && status.canRefine && Boolean(status.refineCost)
+  const canBreakthrough = owned && !locked && status.canBreakthrough && Boolean(status.breakthroughCost)
+  const refineReason = !owned ? '尚未收录' : locked ? '当前状态只读' : tier === 1 && level >= FORGE_TIER_CAPS[1] ? '需先突破' : tier === 2 && level >= cap ? '已达二阶等级上限' : !status.refineCost ? '暂不可精炼' : status.reason
+  const breakthroughReason = !owned ? '尚未收录' : locked ? '当前状态只读' : tier === 2 ? '已完成二阶突破' : level < FORGE_TIER_CAPS[1] ? `需先达到 Lv.${FORGE_TIER_CAPS[1]}` : status.reason
+  const refine = () => {
+    const result = refineForgeItem(save, item.id)
+    if (!result.changed) onFeedback(result.error ?? '精炼未生效。')
+    else { onSaveChange(result); onFeedback(`「${item.name}」已精炼至 Lv.${result.save.levels[item.id]}。`) }
+  }
+  const breakthrough = () => {
+    const result = breakthroughForgeItem(save, item.id)
+    if (!result.changed) onFeedback(result.error ?? '突破未生效。')
+    else { onSaveChange(result); onFeedback(`「${item.name}」已突破为二阶法器，可继续精炼至 Lv.20。`) }
+  }
+  const reset = () => {
+    if (!window.confirm(`确认将「${item.name}」重置为一阶 Lv.1？精炼与突破材料会全额返还，重铸消耗不返还。`)) return
+    const result = resetForgeItem(save, item.id)
+    if (!result.changed) onFeedback(result.error ?? '重置未生效。')
+    else { onSaveChange(result); onFeedback(`「${item.name}」已重置为一阶 Lv.1，材料已返还。`) }
+  }
+  const refund = Array.from({ length: Math.max(0, level - 1) }, (_, index) => index + 1).reduce((total, current) => ({ spiritSand: total.spiritSand + current * 100, artifactEssence: total.artifactEssence + current * 10 }), { spiritSand: tier === 2 ? (status.breakthroughCost?.spiritSand ?? 0) : 0, artifactEssence: tier === 2 ? (status.breakthroughCost?.artifactEssence ?? 0) : 0 })
+  return <section className="character-stage forge-stage" aria-label="武器与装备熔炉">
+    <StageHeader eyebrow="ARTIFACT FORGE" title="熔炉·突破" tags={item.tags} />
+    <p className="feature-intro">精炼沿用收藏等级；一阶 Lv.10 后突破为法器，二阶继续提升至 Lv.20。重置会退回一阶 Lv.1，返还精炼与突破材料。</p>
+    <div className="forge-focus"><div className="forge-focus-art is-square">{owned && <img src={displayArt(item.artKey)} alt="" loading="lazy" decoding="async" />}{!owned && <span aria-hidden="true">？</span>}</div><div><small>当前熔炼对象</small><h3>{owned ? item.name : '未知器物'}</h3><strong>{owned ? `${tier === 1 ? '一阶·凡器' : '二阶·法器'} · Lv.${level} / ${cap}` : '未收录'}</strong><span>{owned ? `${tier === 1 ? '突破后：' : '当前节点：'}${node?.description ?? '固定节点待配置'}` : '先在游历中收录器物后解锁熔炼。'}</span></div></div>
+    <dl className="forge-cost"><div><dt>精炼消耗</dt><dd>{status.refineCost ? `${status.refineCost.spiritSand} 灵砂 / ${status.refineCost.artifactEssence} 器华` : '当前等级不可精炼'}</dd></div><div><dt>突破消耗</dt><dd>{status.breakthroughCost ? `${status.breakthroughCost.spiritSand} 灵砂 / ${status.breakthroughCost.artifactEssence} 器华` : '已完成突破'}</dd></div><div><dt>固定节点</dt><dd>{node?.description ?? '固定节点待配置'}</dd></div><div><dt>重置返还</dt><dd>{`${refund.spiritSand} 灵砂 / ${refund.artifactEssence} 器华`}</dd></div></dl>
+    <div className="forge-actions"><button type="button" className="forge-action" disabled={!canRefine} title={refineReason} onClick={refine}>{canRefine && status.refineCost ? `精炼至 Lv.${level + 1} · ${status.refineCost.spiritSand} 灵砂 / ${status.refineCost.artifactEssence} 器华` : `精炼${refineReason ? `（${refineReason}）` : ''}`}</button><button type="button" className="forge-action forge-breakthrough" disabled={!canBreakthrough} title={breakthroughReason} onClick={breakthrough}>{canBreakthrough && status.breakthroughCost ? `突破至二阶 · ${status.breakthroughCost.spiritSand} 灵砂 / ${status.breakthroughCost.artifactEssence} 器华` : `突破${breakthroughReason ? `（${breakthroughReason}）` : ''}`}</button><button type="button" className="forge-action forge-reset" disabled={!owned || locked || (tier === 1 && level === 1)} title={locked ? '当前状态只读' : tier === 1 && level === 1 ? '当前已是凡器 Lv.1' : undefined} onClick={reset}>免费重置</button></div>
+    {readOnly && <p className="forge-pending" role="status">当前只读：劫境或待领取报告结束后可熔炼。</p>}
+  </section>
 }
 
 export function CharacterPage({ save, onSaveChange, readOnly = false, readOnlyReason, onEnterBattle, combatPreview }: CharacterPageProps) {
@@ -235,10 +280,11 @@ export function CharacterPage({ save, onSaveChange, readOnly = false, readOnlyRe
   const onSelectSlot = (slot: LoadoutSlotId) => selectSlot(save, slot, setSelectedSlot, setSelectedId)
   const lockedMessage = readOnlyReason ?? '当前状态只读；劫境或待领取报告结束后可调整配装。'
   const categoryOptions = ['all', ...tab.categories] as Array<typeof allCategories[number]>
+  const forgeItem = FORGE_NODES[selectedId as keyof typeof FORGE_NODES] ? COLLECTION_BY_ID[selectedId] : COLLECTION.find((entry) => (entry.category === 'weapon' || entry.category === 'equipment') && save.ownedIds.includes(entry.id))
   return <main className="paper-page character-page">
     <header className="page-heading character-heading"><div><small>CHARACTER · LOADOUT · INVENTORY</small><h2>角色与行囊</h2></div><div className="character-heading-actions"><span className="build-badge">{summary.buildName}</span><button type="button" disabled={readOnly} title={readOnly ? lockedMessage : undefined} onClick={() => onEnterBattle?.()}>{readOnly ? '当前不可试法' : '携此阵试法'}</button></div></header>
     <p className="character-guide" role="note"><span aria-hidden="true">✦</span>{readOnly ? lockedMessage : '角色页集中管理真实槽位；点击物品查看规则，拖入兼容槽位装备。'}<button type="button" aria-label="关闭操作提示" onClick={(event) => { event.currentTarget.parentElement?.remove() }}>×</button></p>
-    <nav className="character-tabs" aria-label="角色管理分页" role="tablist">{characterTabs.map((entry) => <button key={entry.id} type="button" role="tab" aria-selected={activeTab === entry.id} className={activeTab === entry.id ? 'is-active' : ''} onClick={() => { setActiveTab(entry.id); setCategory('all'); const first = COLLECTION.find((item) => entry.categories.includes(item.category) && save.ownedIds.includes(item.id)); if (first) selectItem(first.id) }}><small>{entry.eyebrow}</small><strong>{entry.label}</strong><span>{entry.id === 'loadout' ? '六主槽' : entry.id === 'spirits' ? '双妖灵' : entry.id === 'utility' ? '法宝 · 行用' : '六张起始牌'}</span></button>)}</nav>
+    <nav className="character-tabs" aria-label="角色管理分页" role="tablist">{characterTabs.map((entry) => <button key={entry.id} type="button" role="tab" aria-selected={activeTab === entry.id} className={activeTab === entry.id ? 'is-active' : ''} onClick={() => { setActiveTab(entry.id); setCategory('all'); const first = COLLECTION.find((item) => entry.categories.includes(item.category) && save.ownedIds.includes(item.id)); if (first) selectItem(first.id) }}><small>{entry.eyebrow}</small><strong>{entry.label}</strong><span>{entry.id === 'loadout' ? '六主槽' : entry.id === 'spirits' ? '双妖灵' : entry.id === 'utility' ? '法宝 · 行用' : entry.id === 'spells' ? '六张起始牌' : '精炼与突破'}</span></button>)}</nav>
     <DragDropProvider onDragEnd={handleDragEnd}>
       <div className="character-layout">
         <DetailPanel detail={detail} save={save} selectedSlot={selectedSlot} readOnly={readOnly} readOnlyReason={lockedMessage} combatPreview={combatPreview} onEquip={() => equipSelected()} onSaveChange={onSaveChange} onFeedback={setFeedback} />
@@ -246,7 +292,8 @@ export function CharacterPage({ save, onSaveChange, readOnly = false, readOnlyRe
         {activeTab === 'spirits' && <SpiritsStage save={save} summary={summary} readOnly={readOnly} selectedSlot={selectedSlot} onSelectSlot={onSelectSlot} />}
         {activeTab === 'utility' && <UtilityStage save={save} summary={summary} readOnly={readOnly} selectedSlot={selectedSlot} onSelectSlot={onSelectSlot} />}
         {activeTab === 'spells' && <SpellsStage save={save} summary={summary} readOnly={readOnly} selectedSlot={selectedSlot} onSelectSlot={onSelectSlot} onPriorityChange={(cardIds) => { if (readOnly) { setFeedback('当前状态只读，优先级将在本局结束后开放。'); return }; const result = reorderLoadoutPriority(save, cardIds); if (result.changed) { onSaveChange(result); setFeedback('自动出牌优先级已保存。') } else setFeedback(result.error ?? '优先级没有变化。') }} onFeedback={setFeedback} />}
-        <aside className="character-inventory"><div className="inventory-heading"><div><small>COLLECTION STORAGE</small><h3>{tab.label}背包</h3></div><strong>{items.length}<small> / {ownedCount}</small></strong></div><div className="inventory-filters"><input aria-label="搜索收藏" placeholder="搜索名称、效果或标签" value={query} onChange={(event) => setQuery(event.target.value)} /><select aria-label="标签筛选" value={tagFilter} onChange={(event) => setTagFilter(event.target.value as typeof tagFilter)}><option value="all">全部标签</option><option value="sword">剑意</option><option value="talisman">符咒</option><option value="spirit">御灵</option></select><select aria-label="稀有度筛选" value={rarityFilter} onChange={(event) => setRarityFilter(event.target.value as typeof rarityFilter)}><option value="all">全部稀有度</option>{Object.entries(rarityNames).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></div><div className="inventory-category-tabs">{categoryOptions.map((id) => <button type="button" key={id} className={visibleCategory === id ? 'is-active' : ''} onClick={() => setCategory(id)}>{id === 'all' ? '全部' : categoryNames[id as CollectionCategory]}<small>{id === 'all' ? ownedCount : COLLECTION.filter((item) => item.category === id && save.ownedIds.includes(item.id)).length}</small></button>)}</div><label className="equipped-filter"><input type="checkbox" checked={equippedOnly} onChange={(event) => setEquippedOnly(event.target.checked)} />只看已装备</label><div className="inventory-grid">{items.length ? items.map((item) => <DraggableItem key={item.id} item={item} level={save.levels[item.id] ?? 1} selected={selectedId === item.id} equipped={equipped.has(item.id)} readOnly={readOnly} onSelect={() => selectItem(item.id)} />) : <p className="empty-inventory">没有符合筛选条件的已拥有收藏。</p>}</div><p className="inventory-feedback" role="status" aria-live="polite">{feedback}</p></aside>
+        {activeTab === 'forge' && forgeItem && <ForgeStage save={save} item={forgeItem} readOnly={readOnly} onSaveChange={onSaveChange} onFeedback={setFeedback} />}
+        <aside className="character-inventory"><div className="inventory-heading"><div><small>COLLECTION STORAGE</small><h3>{tab.label}背包</h3></div><strong>{items.length}<small> / {ownedCount}</small></strong></div><div className="inventory-filters"><input aria-label="搜索收藏" placeholder="搜索名称、效果或标签" value={query} onChange={(event) => setQuery(event.target.value)} /><select aria-label="标签筛选" value={tagFilter} onChange={(event) => setTagFilter(event.target.value as typeof tagFilter)}><option value="all">全部标签</option><option value="sword">剑意</option><option value="talisman">符咒</option><option value="spirit">御灵</option></select><select aria-label="稀有度筛选" value={rarityFilter} onChange={(event) => setRarityFilter(event.target.value as typeof rarityFilter)}><option value="all">全部稀有度</option>{Object.entries(rarityNames).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></div><div className="inventory-category-tabs">{categoryOptions.map((id) => <button type="button" key={id} className={visibleCategory === id ? 'is-active' : ''} onClick={() => setCategory(id)}>{id === 'all' ? '全部' : categoryNames[id as CollectionCategory]}<small>{id === 'all' ? ownedCount : COLLECTION.filter((item) => item.category === id && save.ownedIds.includes(item.id)).length}</small></button>)}</div><label className="equipped-filter"><input type="checkbox" checked={equippedOnly} onChange={(event) => setEquippedOnly(event.target.checked)} />只看已装备</label><div className="inventory-grid">{items.length ? items.map((item) => <DraggableItem key={item.id} item={item} level={save.levels[item.id] ?? 1} cap={levelCap(save, item)} selected={selectedId === item.id} equipped={equipped.has(item.id)} readOnly={readOnly} onSelect={() => selectItem(item.id)} />) : <p className="empty-inventory">没有符合筛选条件的已拥有收藏。</p>}</div><p className="inventory-feedback" role="status" aria-live="polite">{feedback}</p></aside>
       </div>
     </DragDropProvider>
   </main>

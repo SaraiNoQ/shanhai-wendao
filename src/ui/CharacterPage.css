@@ -15,7 +15,7 @@
 .character-guide > span { color: var(--sick-gold); }
 .character-guide button { margin-left: auto; border: 0; color: var(--ghost); background: transparent; font-size: 1.05rem; cursor: pointer; }
 
-.character-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
+.character-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
 .character-tabs button { display: grid; min-height: 67px; align-content: center; gap: 2px; padding: 8px 12px; border: 1px solid var(--line-strong); color: var(--muted); background: linear-gradient(140deg, #101714, #090e0c); text-align: left; cursor: pointer; }
 .character-tabs button:hover, .character-tabs button:focus-visible { border-color: var(--ghost); color: var(--paper-light); outline: 2px solid rgb(101 216 197 / 18%); outline-offset: 1px; }
 .character-tabs button.is-active { border-color: var(--sick-gold); background: linear-gradient(140deg, #211a0e, #101411); box-shadow: inset 0 -3px 0 var(--sick-gold); }
@@ -133,6 +133,27 @@
 .alternate-skills button { padding: 5px 8px; border: 1px solid var(--line); color: var(--muted); background: #0b100e; font-size: .65rem; cursor: pointer; }
 .alternate-skills button:hover, .alternate-skills button:focus-visible { border-color: var(--ghost); color: var(--ghost); }
 
+.forge-stage { background: radial-gradient(circle at 50% 30%, rgb(144 77 39 / 18%), transparent 42%), linear-gradient(rgb(20 13 10 / 88%), rgb(7 9 8 / 97%)), url('/assets/pixel/bg-huaiyin-roots.png') center / cover; }
+.forge-focus { display: grid; grid-template-columns: minmax(120px, 180px) 1fr; gap: 18px; align-items: center; max-width: 560px; margin: 32px auto 22px; padding: 14px; border: 1px solid var(--sick-gold); background: rgb(12 14 11 / 88%); box-shadow: inset 0 0 0 2px #080a08; }
+.forge-focus-art { display: grid; aspect-ratio: 1; place-items: center; overflow: hidden; border: 1px solid var(--line-strong); background: radial-gradient(circle, rgb(55 135 121 / 20%), transparent 60%), #090e0c; }
+.forge-focus-art img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(5px 6px 0 rgb(0 0 0 / 46%)); }
+.forge-focus small { color: var(--muted); font: .62rem var(--mono); letter-spacing: .1em; }
+.forge-focus h3 { margin: 4px 0 7px; color: var(--paper-light); font: 500 1.45rem var(--display); letter-spacing: .1em; }
+.forge-focus strong { display: block; color: var(--ghost); font: 1rem var(--mono); }
+.forge-focus span { display: block; margin-top: 9px; color: var(--paper); font-size: .72rem; line-height: 1.5; }
+.forge-cost { display: grid; gap: 6px; max-width: 560px; margin: 0 auto 16px; }
+.forge-cost > div { display: grid; grid-template-columns: 90px 1fr; gap: 10px; padding: 9px 10px; border-bottom: 1px solid var(--line); background: rgb(8 14 11 / 76%); }
+.forge-cost dt { color: var(--muted); font-size: .68rem; }
+.forge-cost dd { margin: 0; color: var(--paper-light); font: .72rem var(--mono); }
+.forge-action { display: block; width: min(560px, 100%); min-height: 44px; margin: 12px auto 0; border: 1px solid var(--sick-gold); color: #0c100d; background: var(--sick-gold); font-size: .76rem; cursor: pointer; }
+.forge-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 560px; margin: 12px auto 0; }
+.forge-actions .forge-action { width: 100%; margin: 0; }
+.forge-actions .forge-breakthrough { border-color: var(--ghost); background: var(--ghost); }
+.forge-actions .forge-reset { border-color: var(--blood-bright); color: var(--blood-bright); background: #20100f; }
+.forge-action:hover:not(:disabled), .forge-action:focus-visible { border-color: var(--paper-light); background: var(--paper-light); outline: 2px solid rgb(211 183 96 / 24%); outline-offset: 2px; }
+.forge-action:disabled { color: var(--muted); background: #181814; border-color: var(--line-strong); cursor: not-allowed; }
+.forge-pending { margin: 13px auto 0; max-width: 560px; padding: 9px 10px; border-left: 2px solid var(--blood-bright); color: var(--blood-bright); background: rgb(48 16 12 / 44%); font-size: .68rem; line-height: 1.5; }
+
 .character-inventory { min-height: 700px; padding: 14px; }
 .inventory-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .inventory-heading > strong { color: var(--ghost); font: 1.35rem var(--mono); }
@@ -193,6 +214,9 @@
   .combat-readout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .utility-slot-layout { grid-template-columns: 1fr; }
   .utility-slot-layout > div:first-child { max-width: 150px; margin: auto; }
+  .forge-focus { grid-template-columns: 100px 1fr; gap: 10px; margin-top: 22px; }
+  .forge-focus h3 { font-size: 1.1rem; }
+  .forge-actions { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

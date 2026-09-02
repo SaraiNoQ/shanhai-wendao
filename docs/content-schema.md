@@ -197,7 +197,24 @@ type DamageBreakdown = {
 - 时间在界面显示为秒，伤害、治疗、护盾、费用和层数显示最终向下取整后的整数。
 - 角色页只保留六个主装备槽；妖灵、法宝丹药、术法通过页签管理，不为未来内容创建空存档字段。
 
-M5.7 熔炼使用一条成长线：精炼提升 `levels[weaponId]`，突破开放下一段等级并触发固定专属节点，升阶仅改变品阶显示；未实现前不改变 `saveVersion`。
+### 7.7 M5.7 器物熔炼与全图鉴素材
+
+```ts
+type ForgeTier = 1 | 2
+type ForgeNode = {
+  id: string
+  category: 'weapon' | 'equipment'
+  params: Record<string, number | string | boolean>
+  description: string
+}
+```
+
+- `src/content/forging.ts` 是 3 把武器和 12 件装备的二阶节点、参数覆盖和突破成本唯一来源；不得在 JSX 或 `battle.ts` 中复制节点数值。
+- 精炼复用 `levels[id]`；一阶上限为 10，二阶上限为 20。突破要求 `realmId === 'foundation_established'`，武器固定消耗 1000 灵砂/100 器华，装备按稀有度使用 600/60、800/80、1000/100、1200/120。
+- `PlayerSave.saveVersion` 为 5，新增 `forgeTiers: Partial<Record<string, ForgeTier>>`；v4 缺省为一阶，非法器物、非法品阶和越级等级必须拒绝导入。
+- 免费重置将器物退回一阶 Lv.1，并返还全部精炼和突破材料；装备词条及重铸消耗不回退。
+- `artKey` 对 60 件收藏和 22 条志怪录均为必填稳定键，且必须在 `GAME_ASSETS` 注册。收藏图使用 256×256 透明 RGBA 或 320×180 `pal8` 卡图，怪谈使用 320×180 `pal8` 场景图。
+- 已拥有/已发现条目才允许渲染图片；锁定条目只显示类别、来源和墨影占位，不提前请求对应 PNG。
 
 ## 8. 内容提交检查
 

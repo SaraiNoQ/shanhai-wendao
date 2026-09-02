@@ -2,6 +2,7 @@ import { uniformInt } from 'pure-rand/distribution/uniformInt'
 import { xoroshiro128plus, xoroshiro128plusFromState } from 'pure-rand/generator/xoroshiro128plus'
 import { PROTOTYPE_CONTENT } from '../content/prototype'
 import { COLLECTIBLE_EFFECTS } from '../content/effects'
+import { getTieredEffectParams } from '../content/forging'
 import type { Archetype, BattleCardInstance, BattleCardReference, BattleCommand, BattleContent, BattleEvent, BattleSetup, BattleState, BattleTransition, BuildId, CardDefinition, CardId, ComboId, EnemyDefinition, EnemyId, SpiritId, UnitDefinition, UnitId, UnitState } from './types'
 import { getDamageBreakdown } from './combat-math'
 
@@ -89,6 +90,7 @@ function cloneState(state: BattleState<CardRef>): BattleState<CardRef> {
     battleSetup: state.battleSetup && cloneSetup(state.battleSetup),
     consumableUses: { ...state.consumableUses },
     collectibleLevels: { ...state.collectibleLevels },
+    forgeTiers: { ...state.forgeTiers },
     cardTagCounts: { ...state.cardTagCounts },
     equipmentIds: [...state.equipmentIds],
     affixIds: [...state.affixIds],
@@ -153,6 +155,10 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
   const equipmentIds = [...(modifiers?.equipmentIds ?? [])]
   const affixIds = [...(modifiers?.affixIds ?? [])]
   const has = (id: string) => equipmentIds.includes(id)
+  const forgeParam = (id: string, key: string, fallback: number) => {
+    const value = getTieredEffectParams(id, COLLECTIBLE_EFFECTS[id]?.params ?? {}, modifiers?.forgeTiers?.[id] ?? 1)[key]
+    return typeof value === 'number' ? value : fallback
+  }
   const openingEnergy = affixIds.filter((id) => id === 'opening_energy').length
   const treasureId = setup?.treasureId ?? modifiers?.treasureId
   const consumableIds = setup?.consumableIds ?? modifiers?.consumableIds ?? []
@@ -162,7 +168,7 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
     weaponId: build.weaponId, techniqueId: build.techniqueId, activeCombos: activeCombos(content, buildId),
     leader, spirits, enemies: content.enemies.map(makeUnit),
     energy: Math.min(10, 3 + openingEnergy), maxEnergy: 10, energyProgressMs: 0,
-    swordIntent: 0, swordIntentCap: has('equipment_hidden_edge_jade') ? 12 : 10, nextSwordIntentBonus: 0, swordCardStreak: 0, nextFinisherDiscount: 0,
+    swordIntent: 0, swordIntentCap: has('equipment_hidden_edge_jade') ? forgeParam('equipment_hidden_edge_jade', 'swordIntentCap', 12) : 10, nextSwordIntentBonus: 0, swordCardStreak: 0, nextFinisherDiscount: 0,
     talismanDiscountCharges: 0, nextEdictDiscount: 0,
     spiritBonds: [0, 0], spiritComboCounts: [0, 0], firstSpiritComboTriggered: [false, false], totalSpiritCombos: 0,
     spiritComboDamageBonus: 0, copyNextSpiritCombo: false, dualSpiritSwordReadyAtMs: 0,
@@ -180,6 +186,7 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
     treasureMaxCharge: Math.max(0, setup?.treasureMaxCharge ?? 3),
     consumableUses,
     collectibleLevels: { ...(modifiers?.collectibleLevels ?? {}) },
+    forgeTiers: { ...(modifiers?.forgeTiers ?? {}) },
     equipmentIds,
     affixIds,
     cardDiscountCharges: has('equipment_wind_chasing_shoes') ? 1 : 0,
@@ -190,7 +197,11 @@ export function createBattle(seed: number, content: BattleContent = PROTOTYPE_CO
     meridianGuardTriggered: false,
     lastSpiritActionAtMs: -1_000_000_000,
   }
-  if (has('equipment_hundred_beast_circlet')) state.spiritBonds = [1, 1]
+  const openingWeaponBond = contentValue(content, build.weaponId, 'openingSpiritBond', 0)
+  if (has('equipment_hundred_beast_circlet') || openingWeaponBond > 0) {
+    const openingBond = Math.min(2, (has('equipment_hundred_beast_circlet') ? 1 : 0) + openingWeaponBond)
+    state.spiritBonds = [openingBond, openingBond]
+  }
   const ignored: BattleEvent[] = []
   if (!setupHand) while (state.hand.length < MAX_HAND && (state.deck.length > 0 || state.discard.length > 0)) drawOne(state, ignored)
   if (!legacyCards && normalizedSetup) {
@@ -213,7 +224,12 @@ function effectValue(state: BattleState<CardRef>, id: string, key: string, base:
 }
 function contentValue(content: BattleContent, id: string, key: string, fallback: number) {
   const unit = [...Object.values(content.weapons), ...Object.values(content.techniques), ...Object.values(content.spirits)].find((item) => item.id === id)
-  const value = unit?.effectParams?.[key]
+  const value = getTieredEffectParams(id, unit?.effectParams ?? {}, content.modifiers?.forgeTiers?.[id] ?? 1)[key]
+  return typeof value === 'number' ? value : fallback
+}
+
+function forgeValue(state: BattleState<CardRef>, id: string, key: string, fallback: number) {
+  const value = getTieredEffectParams(id, COLLECTIBLE_EFFECTS[id]?.params ?? {}, state.forgeTiers?.[id] ?? 1)[key]
   return typeof value === 'number' ? value : fallback
 }
 
@@ -342,10 +358,10 @@ function addArmorBreak(state: BattleState<CardRef>, target: UnitState, amount: n
 
 function addMarks(state: BattleState<CardRef>, target: UnitState, amount: number, events: BattleEvent[]) {
   if (target.hp <= 0) return
-  const bonus = hasModifier(state, 'equipment_cinnabar_crown') && target.talismanMarks === 0 ? 1 : 0
+  const bonus = hasModifier(state, 'equipment_cinnabar_crown') && target.talismanMarks === 0 ? forgeValue(state, 'equipment_cinnabar_crown', 'marks', 1) : 0
   const overflow = Math.max(0, target.talismanMarks + amount + bonus - MAX_MARKS)
   target.talismanMarks = Math.min(MAX_MARKS, target.talismanMarks + amount + bonus)
-  if (overflow && hasModifier(state, 'equipment_thunder_coin')) addBurn(state, target, overflow, events)
+  if (overflow && hasModifier(state, 'equipment_thunder_coin')) addBurn(state, target, overflow * forgeValue(state, 'equipment_thunder_coin', 'burnPerOverflow', 1), events)
   target.talismanExpiresAtMs = state.timeMs + 10_000
   events.push({ type: 'status_changed', targetId: target.id, status: 'talisman_mark', value: target.talismanMarks, atMs: state.timeMs })
 }
@@ -367,9 +383,10 @@ function detonateMarks(state: BattleState<CardRef>, sourceId: string, target: Un
   target.talismanMarks -= consumed
   if (!target.talismanMarks) target.talismanExpiresAtMs = 0
   events.push({ type: 'status_changed', targetId: target.id, status: 'talisman_mark', value: target.talismanMarks, atMs: state.timeMs })
-  dealFlatDamage(state, sourceId, target, Math.floor(consumed * 14 * (hasModifier(state, 'mark_burst_power') || hasModifier(state, 'equipment_thunder_coin') ? 108 : 100) / 100), events)
+  const burstPercent = hasModifier(state, 'equipment_thunder_coin') ? forgeValue(state, 'equipment_thunder_coin', 'burstPercent', 108) : hasModifier(state, 'mark_burst_power') ? 108 : 100
+  dealFlatDamage(state, sourceId, target, Math.floor(consumed * 14 * burstPercent / 100), events)
   paperBrideShield(state, sourceId, consumed, events)
-  if (hasModifier(state, 'equipment_talisman_silk_robe')) addShield(state, sourceId, state.leader, consumed * effectValue(state, 'equipment_talisman_silk_robe', 'shieldPerMark', 2), events)
+  if (hasModifier(state, 'equipment_talisman_silk_robe')) addShield(state, sourceId, state.leader, consumed * effectValue(state, 'equipment_talisman_silk_robe', 'shieldPerMark', forgeValue(state, 'equipment_talisman_silk_robe', 'shieldPerMark', 2)), events)
   return consumed
 }
 
@@ -401,8 +418,10 @@ function triggerSpiritCombo(state: BattleState<CardRef>, index: number, events: 
   const enemy = currentEnemy(state)
   if (!enemy || spirit.hp <= 0) return
   events.push({ type: 'unit_action', unitId: spirit.id, action: '灵契协击', atMs: state.timeMs })
-  dealDamage(state, spirit.id, spirit.attack, enemy, Math.floor((130 + state.spiritComboDamageBonus) * (hasModifier(state, 'spirit_combo_power') ? 108 : 100) / 100), events)
-  if (hasModifier(state, 'equipment_mountain_lord_pelt')) addShield(state, spirit.id, state.leader, effectValue(state, 'equipment_mountain_lord_pelt', 'shield', 8), events)
+  const firstComboPercent = hasModifier(state, 'equipment_hundred_beast_circlet') && state.spiritComboCounts[index] === 0 ? forgeValue(state, 'equipment_hundred_beast_circlet', 'firstComboPowerPercent', 20) : 0
+  const comboPower = Math.floor((130 + state.spiritComboDamageBonus) * (100 + firstComboPercent) / 100)
+  dealDamage(state, spirit.id, spirit.attack, enemy, Math.floor(comboPower * (hasModifier(state, 'spirit_combo_power') ? 108 : 100) / 100), events)
+  if (hasModifier(state, 'equipment_mountain_lord_pelt')) addShield(state, spirit.id, state.leader, effectValue(state, 'equipment_mountain_lord_pelt', 'shield', forgeValue(state, 'equipment_mountain_lord_pelt', 'shield', 8)), events)
   state.spiritComboCounts[index] += 1
   state.totalSpiritCombos += 1
   spiritComboBonus(state, index, events)
@@ -469,7 +488,7 @@ export function getEffectiveCardCost(state: BattleState<CardRef>, card: CardDefi
   if (card.tags.includes('talisman') && state.talismanDiscountCharges > 0) discount += 1
   if (card.kind === '敕令') discount += state.nextEdictDiscount
   if (card.id === state.discountedCardId) discount += 1
-  if ((state.cardDiscountCharges ?? 0) > 0 && isWeaponTagCard(state, card)) discount += 1
+  if ((state.cardDiscountCharges ?? 0) > 0 && isWeaponTagCard(state, card)) discount += hasModifier(state, 'equipment_wind_chasing_shoes') ? forgeValue(state, 'equipment_wind_chasing_shoes', 'discount', 1) : 1
   if (hasTagDiscount(state, card)) discount += 1
   if (resolveCardInstance(state, cardInstance)?.upgraded) discount += 1
   return Math.max(0, card.cost - discount)
@@ -531,7 +550,8 @@ function applyCardEffect(state: BattleState<CardRef>, card: CardDefinition, targ
     case 'sword_finisher': {
       const consumed = state.swordIntent
       if (enemy) {
-        const finisherPower = Math.floor((power + consumed * 45) * (hasModifier(state, 'sword_finisher_power') || hasModifier(state, 'equipment_hidden_edge_jade') ? 108 : 100) / 100)
+        const finisherPercent = hasModifier(state, 'equipment_hidden_edge_jade') ? forgeValue(state, 'equipment_hidden_edge_jade', 'finisherPercent', 108) : hasModifier(state, 'sword_finisher_power') ? 108 : 100
+        const finisherPower = Math.floor((power + consumed * 45) * finisherPercent / 100)
         dealDamage(state, card.id, state.leader.attack, enemy, finisherPower, events)
         if (state.activeCombos.includes('flying_sword_seal')) {
           detonateMarks(state, card.id, enemy, Math.floor(consumed / 3), events)
@@ -615,12 +635,13 @@ function playCard(state: BattleState<CardRef>, cardId: CardId | undefined, cardI
   if (!state.playedCardIds.includes(selectedCardId)) state.playedCardIds.push(selectedCardId)
   if (card.tags.includes('sword')) {
     state.talismanCardStreak = 0
-    if (hasModifier(state, 'equipment_green_bamboo_crown') && state.cardsPlayed % 3 === 0) gainSwordIntent(state, 1, events)
+    const swordCardCount = state.cardTagCounts.sword + 1
+    if (hasModifier(state, 'equipment_green_bamboo_crown') && swordCardCount % forgeValue(state, 'equipment_green_bamboo_crown', 'cards', 3) === 0) gainSwordIntent(state, 1, events)
   } else if (card.tags.includes('talisman')) {
     state.talismanCardStreak += 1
-    if (hasModifier(state, 'equipment_star_treading_shoes') && state.talismanCardStreak >= 3) { state.talismanCardStreak = 0; gainEnergy(state, 1, events) }
+    if (hasModifier(state, 'equipment_star_treading_shoes') && state.talismanCardStreak >= forgeValue(state, 'equipment_star_treading_shoes', 'cards', 3)) { state.talismanCardStreak = 0; gainEnergy(state, 1, events) }
   } else state.talismanCardStreak = 0
-  if (hasModifier(state, 'equipment_wandering_cloud_robe') && !state.firstCardShieldGranted) { state.firstCardShieldGranted = true; addShield(state, 'equipment_wandering_cloud_robe', state.leader, effectValue(state, 'equipment_wandering_cloud_robe', 'shield', 12), events) }
+  if (hasModifier(state, 'equipment_wandering_cloud_robe') && !state.firstCardShieldGranted) { state.firstCardShieldGranted = true; addShield(state, 'equipment_wandering_cloud_robe', state.leader, effectValue(state, 'equipment_wandering_cloud_robe', 'shield', forgeValue(state, 'equipment_wandering_cloud_robe', 'shield', 12)), events) }
   events.push({ type: 'energy_changed', value: state.energy, atMs: state.timeMs })
   events.push({ type: 'card_played', cardId: selectedCardId, ...(isBattleCardInstance(selected.value) ? { instanceId: selected.value.instanceId } : {}), automatic, targetId: resolvedTarget, atMs: state.timeMs })
   applyCardEffect(state, card, resolvedTarget, events)
@@ -754,7 +775,7 @@ function autoAction(state: BattleState<CardRef>, unit: UnitState, events: Battle
       default: dealDamage(state, unit.id, unit.attack, state.leader, 100, events)
     }
   } else if (enemy) {
-    const alternatingSpirit = state.lastSpiritActionId !== undefined && state.lastSpiritActionId !== unit.id && state.timeMs - state.lastSpiritActionAtMs <= 4_000
+    const alternatingSpirit = state.lastSpiritActionId !== undefined && state.lastSpiritActionId !== unit.id && state.timeMs - state.lastSpiritActionAtMs <= (hasModifier(state, 'equipment_paired_bronze_bell') ? forgeValue(state, 'equipment_paired_bronze_bell', 'windowMs', 4_000) : 4_000)
     events.push({ type: 'unit_action', unitId: unit.id, action: unit.title, atMs: state.timeMs })
     switch (unit.id as SpiritId) {
       case 'blade_tail_fox': for (let hit = 0; hit < contentValue(PROTOTYPE_CONTENT, unit.id, 'hits', 2); hit += 1) dealDamage(state, unit.id, unit.attack, enemy, contentValue(PROTOTYPE_CONTENT, unit.id, 'powerPercent', 55), events); break
@@ -764,7 +785,7 @@ function autoAction(state: BattleState<CardRef>, unit: UnitState, events: Battle
       case 'mountain_child': addShield(state, unit.id, state.leader, contentValue(PROTOTYPE_CONTENT, unit.id, 'shield', 18), events); break
       case 'dream_tapir': dealDamage(state, unit.id, unit.attack, enemy, contentValue(PROTOTYPE_CONTENT, unit.id, 'powerPercent', 60), events); gainEnergy(state, contentValue(PROTOTYPE_CONTENT, unit.id, 'energy', 1), events); break
     }
-    if (alternatingSpirit && hasModifier(state, 'equipment_tracking_straw_sandals') && enemy.hp > 0) dealDamage(state, unit.id, unit.attack, enemy, effectValue(state, 'equipment_tracking_straw_sandals', 'powerPercent', 25), events)
+    if (alternatingSpirit && hasModifier(state, 'equipment_tracking_straw_sandals') && enemy.hp > 0) dealDamage(state, unit.id, unit.attack, enemy, effectValue(state, 'equipment_tracking_straw_sandals', 'powerPercent', forgeValue(state, 'equipment_tracking_straw_sandals', 'powerPercent', 25)), events)
     if (alternatingSpirit && hasModifier(state, 'equipment_paired_bronze_bell')) { gainBond(state, 0, 1, events); gainBond(state, 1, 1, events) }
     state.lastSpiritActionId = unit.id as SpiritId
     state.lastSpiritActionAtMs = state.timeMs

@@ -176,6 +176,57 @@ describe('deterministic M2 battle', () => {
     expect(bell.spirits[0].nextActionAtMs).toBeLessThan(bell.spirits[0].attackIntervalMs)
   })
 
+  it('applies second-tier weapon and equipment nodes through the shared projection', () => {
+    const azureSave = createPlayerSave()
+    azureSave.forgeTiers = { azure_wind_sword: 2 }
+    const azureContent = battleContentFromSave(azureSave)
+    const azure = createBattle(38, azureContent, 'pure_sword')
+    azure.enemies[0].hp = 99_999
+    azure.leader.nextActionAtMs = 250
+    azure.spirits.forEach((spirit) => { spirit.nextActionAtMs = 99_999 })
+    const azureResult = transitionBattle(azure, { type: 'advance', elapsedMs: 4_000 }, azureContent)
+    expect(azureResult.state.swordIntent).toBeGreaterThan(0)
+
+    const brushSave = createPlayerSave()
+    brushSave.forgeTiers = { cinnabar_brush: 2 }
+    const brushContent = battleContentFromSave(brushSave)
+    const brush = createBattle(39, brushContent, 'pure_talisman')
+    brush.enemies[0].talismanMarks = 1
+    brush.enemies[0].talismanExpiresAtMs = 10_000
+    brush.leader.nextActionAtMs = 250
+    brush.spirits.forEach((spirit) => { spirit.nextActionAtMs = 99_999 })
+    expect(transitionBattle(brush, { type: 'advance', elapsedMs: 250 }, brushContent).state.enemies[0].talismanExpiresAtMs).toBe(11_500)
+
+    const bellSave = createPlayerSave()
+    bellSave.forgeTiers = { spirit_bell: 2 }
+    const bell = createBattle(40, battleContentFromSave(bellSave), 'pure_spirit')
+    expect(bell.spiritBonds).toEqual([1, 1])
+
+    const crownSave = createPlayerSave()
+    crownSave.ownedIds = [...new Set([...crownSave.ownedIds, 'equipment_green_bamboo_crown'])]
+    crownSave.loadout.equipmentIds = ['equipment_green_bamboo_crown', crownSave.loadout.equipmentIds[1], crownSave.loadout.equipmentIds[2], crownSave.loadout.equipmentIds[3]]
+    crownSave.forgeTiers = { equipment_green_bamboo_crown: 2 }
+    const crownContent = battleContentFromSave(crownSave)
+    let crown = createBattle(41, crownContent, 'pure_sword')
+    crown = play(crown, 'hidden_edge')
+    crown.nextSwordIntentBonus = 0
+    crown = play(crown, 'hidden_edge')
+    expect(crown.swordIntent).toBe(1)
+  })
+
+  it('keeps forge tiers in cloned and restarted battle snapshots', () => {
+    const save = createPlayerSave()
+    save.forgeTiers = { azure_wind_sword: 2 }
+    const content = battleContentFromSave(save)
+    const state = createBattle(42, content, 'pure_sword')
+    const advanced = transitionBattle(state, { type: 'advance', elapsedMs: 250 }, content).state
+    expect(advanced.forgeTiers).toEqual({ azure_wind_sword: 2 })
+    expect(advanced.forgeTiers).not.toBe(state.forgeTiers)
+    const restarted = transitionBattle(advanced, { type: 'restart' }, content).state
+    expect(restarted.forgeTiers).toEqual({ azure_wind_sword: 2 })
+    expect(restarted.swordIntentCap).toBe(12)
+  })
+
   it('implements technique discounts and refunds', () => {
     let sword = createBattle(19, PROTOTYPE_CONTENT, 'pure_sword')
     sword = play(sword, 'guiding_edge')

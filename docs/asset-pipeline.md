@@ -233,3 +233,94 @@ Constraints: preserve the exact character design, pose, proportions, colors and 
 | `character-cultivator-full-v1.png` | 角色管理页静态主将全身像 | `exec-edcd85a5-c942-4829-874d-8f75aee3c089.png` | FFmpeg 最近邻缩放 512×768，保留 `rgba` alpha |
 
 地图最终文件均为 960×540 `pal8`；主将最终文件为 512×768 `rgba`，已用 `ffprobe` 检查 alpha 范围为 0–255。Pixi/DOM 运行时只引用 `GAME_ASSETS`，不调用生成模型。
+
+## M5.7 全图鉴样板与批量记录
+
+- 生成日期：2026-09-02。
+- 生成方式：Codex 内置 OpenAI `image_gen`；模型标识与随机种子未提供。
+- 风格参考：卡图使用 `card-guiding-edge.png`、`card-mountain-splitter.png`、`card-fire-talisman.png` 或 `card-nine-heavens-edict.png`；透明对象使用 `equipment-hidden-edge-jade.png`、`weapon-azure-wind-sword.png` 或 `treasure-mountain-river-inkstone.png`；敌人使用 `enemy-clay-idol.png`、`enemy-shadow-civet.png`；怪谈使用 `bg-huaiyin-road.png`、`bg-huaiyin-waystation.png`。
+- 共用最终约束：阴森惊悚古卷工笔像素、约 32 色、墨黑/枯褐/旧纸灰、妖火青/朱砂红/病态鎏金；不得出现文字、数字、伪符文、卡框、Logo、水印或假棋盘格。卡图和怪谈使用 16:9 横向构图；对象与敌人使用单主体透明背景。
+
+### 六张已确认样板
+
+| 最终文件 | 生成原图 | 类型与后处理 | 最终提示词主体与构图 |
+|---|---|---|---|
+| `card-returning-wind.png` | `exec-b710ba13-9212-475e-87e1-1698d58c6a15.png` | 320×180，FFmpeg 最近邻缩放，32 色 `pal8` | 回风剑：修士挥出环形青刃，双重剑光暗示连续两击；横向电影构图，留出卡面文字空间。 |
+| `card-linked-talisman-script.png` | `exec-e7264208-0976-44bc-bd04-b787989a3394.png` | 320×180，FFmpeg 最近邻缩放，32 色 `pal8` | 符阵连书：旧册展开，空白朱砂纸围绕祭坛成阵，青色灵火连接；所有纸张完全无字无符号。 |
+| `equipment-green-bamboo-crown.png` | `exec-e8b29746-9d43-4621-990f-67d332b6908d.png` | 256×256，FFmpeg 最近邻缩放，保留 `rgba` alpha | 青竹束冠：单个破旧竹编冠，暗线与小剑穗，透明留白，物品图标构图。 |
+| `consumable-spring-return-pill.png` | `exec-c277d8af-77c7-444f-b331-243b17ca2efc.png` | 256×256，FFmpeg 最近邻缩放，保留 `rgba` alpha | 回春丹：单个开裂青瓷药瓶，青色药液、朱砂绳和枯叶；无标签无文字。 |
+| `enemy-withered-vine-spirit.png` | `exec-57c656cb-5554-4be3-80f1-91dff59671fb.png` | 256×256，FFmpeg 最近邻缩放，保留 `rgba` alpha | 枯藤魅：枯藤根须缠成的人形怪物，空洞青火结眼，透明背景，单一生物轮廓。 |
+| `event-roadside-red-sedan.png` | `exec-4e8a06ca-948e-45ee-b5ce-12d00a7bfbee.png` | 320×180，FFmpeg 最近邻缩放，32 色 `pal8` | 路边红轿：雾中古道旁的废弃朱砂红轿，帘内只有黑暗，脚印在轿前中断；横向场景图。 |
+
+六张样板通过主体、轮廓、像素颗粒、透明通道和无伪文字检查后，按同一模板单图生成剩余 44 张：18 张缺失卡图、9 件装备、3 件法宝、6 种消耗品、6 种敌人和 8 张怪谈场景图。每一项均补充原图路径、最终提示词主体、尺寸、后处理和异常；未提供的模型/种子记录为“未提供”。
+
+### M5.7 批量素材记录
+
+- 生成日期：2026-09-02；生成方式：Codex 内置 OpenAI `image_gen`；模型标识与随机种子：未提供。
+- 所有卡图与怪谈场景均使用 `320×180` 最近邻缩放、32 色 `pal8`、无透明；所有器物、丹药和敌人均使用 `256×256` 最近邻缩放、`rgba`、保留 alpha。以下“主体”即最终提示词中的 `Primary request`，共用约束沿用样板记录。
+
+#### 缺失卡图
+
+| 最终文件 | 原图 | 主体 |
+|---|---|---|
+| `card-hidden-edge.png` | `exec-fa78d0d1-2662-43ea-878f-b129300cd3b4.png` | 藏锋：旧石鞘中的收敛青刃与护盾墨纹 |
+| `card-flowing-cloud-slashes.png` | `exec-86986d85-845c-42af-a915-fb09f74b1ee8.png` | 流云三斩：三道连续青色剑弧切开纸影 |
+| `card-armor-piercing-star.png` | `exec-30835177-f489-488d-8330-d1e7fd9c6a79.png` | 破甲点星：细剑光刺穿泥甲并形成星芒裂纹 |
+| `card-sheathe-sword.png` | `exec-e8323a1b-cd28-439d-853c-f04a192b5507.png` | 御剑归鞘：青刃回到旧木剑鞘、剑光收束 |
+| `card-ten-thousand-blades.png` | `exec-fc7d5dea-79ab-4dd9-907a-647583577cc6.png` | 万剑成势：细小飞剑在古道形成旋涡阵势 |
+| `card-mountain-seal.png` | `exec-e163df0e-9d1b-44af-ae8e-69be74db2b21.png` | 镇岳符：空白朱砂纸符扩散青金护盾圆环 |
+| `card-thunder-talisman.png` | `exec-3d3e6f73-017a-4984-b0e9-78052b6946be.png` | 引雷符：空白纸符牵引冷白雷光击中异物 |
+| `card-shadow-binding-talisman.png` | `exec-3efe9da1-eedf-499e-b806-daf4a056c4c6.png` | 缚影符：空白朱砂纸带缠住黑色影子 |
+| `card-life-talisman.png` | `exec-e9b0d3e6-3141-4fe7-a09e-b3a20922aefa.png` | 续命符：青色生命火焰回流到受伤友方 |
+| `card-urgent-edict.png` | `exec-74708268-12e7-4b34-a068-974a2c419d55.png` | 敕令：空白纸符被撕起并爆成青红光屑 |
+| `card-share-spirit-breath.png` | `exec-ff409640-b347-40f1-aa48-ad58341280d7.png` | 分食灵息：两只妖灵分流一团青色灵息 |
+| `card-fight-together.png` | `exec-a78ef575-7610-425a-b524-35ec11938ee8.png` | 并肩：两只妖灵同步扑向雾中目标 |
+| `card-protect-master.png` | `exec-84a18257-5b9e-4029-8b4c-72e0ab12bcf1.png` | 护主：妖灵在修士前张开青金护盾 |
+| `card-spirit-tide.png` | `exec-d10c123b-ddad-48bf-b55a-80a88e609eae.png` | 兽潮：两只妖灵带领山兽从古道奔涌而来 |
+| `card-borrow-spirit.png` | `exec-2fca3af4-71b9-4a96-82c3-6e62d21fef83.png` | 借灵：妖灵魂火复制成第二个青色回响 |
+| `card-all-spirits-covenant.png` | `exec-870c642b-8bab-4682-8898-a3f0e384bbf6.png` | 万灵同契：两只妖灵在契约光环两侧相连 |
+
+#### 缺失装备
+
+| 最终文件 | 原图 | 主体 |
+|---|---|---|
+| `equipment-cinnabar-crown.png` | `exec-36e75965-e675-4351-9765-f05c0118ab0d.png` | 朱砂法冠：窄边道冠、空白纸签与红线结 |
+| `equipment-hundred-beast-circlet.png` | `exec-29cc72ac-d9e7-4ba8-9e09-f94f9903fb80.png` | 百兽额环：古铜兽首额环与红色绳穗 |
+| `equipment-wandering-cloud-robe.png` | `exec-5fda54f3-5ac5-49d4-a965-dcb4b4ae58a8.png` | 游云道袍：折叠深色旧袍与青色云线 |
+| `equipment-talisman-silk-robe.png` | `exec-1fe17663-8571-40e0-b6ea-e93554ab2b31.png` | 法绢纸衣：白灰法绢、空白纸条与护盾光屑 |
+| `equipment-mountain-lord-pelt.png` | `exec-adf4cd53-93e1-41a8-b88f-7ee1fc799bed.png` | 山君皮裘：厚重虎纹皮裘、铜扣与青火绒毛 |
+| `equipment-wind-chasing-shoes.png` | `exec-b5f71bb2-5637-40ab-980b-66dc613d567d.png` | 追风履：轻薄行鞋、青色风痕与朱砂结 |
+| `equipment-star-treading-shoes.png` | `exec-717161dd-27c8-4af4-9e6a-ab3f907aaf33.png` | 踏罡履：厚底道靴、金色星点与青色尘痕 |
+| `equipment-tracking-straw-sandals.png` | `exec-d9ae3082-01b6-4e12-bef9-3270229ba216.png` | 寻踪草履：编草凉鞋、湿泥与青色足迹 |
+
+#### 缺失法宝与消耗品
+
+| 最终文件 | 原图 | 主体 |
+|---|---|---|
+| `treasure-demon-revealing-mirror.png` | `exec-6398939d-caa3-4a2b-9c00-c6088c97a365.png` | 照妖镜：裂纹古铜镜映出青色妖眼 |
+| `treasure-primordial-gourd.png` | `exec-8a67bbeb-b53e-42e8-b94f-d742bfcc142f.png` | 混元葫芦：黑褐葫芦口溢出三枚灵力火珠 |
+| `treasure-demon-binding-rope.png` | `exec-345a0f1d-1e7f-4d03-8edf-314a2566eccf.png` | 缚妖索：盘绕旧麻绳、铜环与锁魂火痕 |
+| `consumable-spirit-gathering-pill.png` | `exec-ce947f23-0fe4-40dd-b5f3-bbef54c888c0.png` | 聚灵丹：古铜小盏、药丸与三点灵气 |
+| `consumable-meridian-guard-pill.png` | `exec-1a257b21-a7b3-44c0-aa48-a10b0ffc1709.png` | 护脉丹：黑色药瓶、护脉光环与布塞 |
+| `consumable-evil-breaking-talisman.png` | `exec-9d27c93e-e20e-4595-86e7-50527d5467e9.png` | 破煞符：空白纸符与净化青火 |
+| `consumable-armor-escape-talisman.png` | `exec-ce25dc69-3ab3-426c-babf-ab9bc0de22a9.png` | 遁甲符：空白纸符、铜甲片与护盾碎光 |
+| `consumable-thunder-summoning-talisman.png` | `exec-73a3125f-79c9-447f-8f18-c1cd94ff3d5f.png` | 召雷符：空白纸符、铜雷印与冷白雷丝 |
+
+#### 缺失敌人与怪谈
+
+| 最终文件 | 原图 | 主体 |
+|---|---|---|
+| `enemy-corpse-lantern-moth.png` | `exec-8b9241c7-928a-4cf2-84e7-16a5d6217175.png` | 尸灯蛾：棺灯烟灰翅膜与冷青尸火 |
+| `enemy-title-seeking-immortal.png` | `exec-0725916e-332f-4fb1-8f63-8d5e0bc8f4f2.png` | 讨封黄仙：黄皮狐妖、空白红纸与铜钱 |
+| `enemy-coin-corpse.png` | `exec-3b9fef4b-5122-4205-ab45-ba32f205217c.png` | 铜钱尸：寿衣僵尸、七窍古钱与红线 |
+| `enemy-night-wandering-thrall.png` | `exec-d3aac19d-af44-4f36-8c69-4c9f5df75afc.png` | 夜游伥：无面黑斗篷伥鬼与低伏姿态 |
+| `enemy-grave-crow-flock.png` | `exec-30f4da8a-8d17-4eea-8f29-4809f3414a64.png` | 墓鸦群：三只以上墓鸦组成统一群体剪影 |
+| `event-talking-stele.png` | `exec-db7f0a50-601b-4e39-a50d-834fd05ae796.png` | 会说话的石碑：裂开无字石碑与青色鬼火 |
+| `event-borrowed-umbrella.png` | `exec-6eab06bb-2401-4d23-a8cf-618bd90b9d38.png` | 雨夜借伞：无人油纸伞和无影人雨雾 |
+| `event-moon-in-well.png` | `exec-1265144d-8e87-4b77-a074-e6728ed9551f.png` | 井中月：石井青白月影与水下手影 |
+| `event-title-seeking-immortal.png` | `exec-c16919cb-cd19-4d3b-bdf7-dd40d9ed60f8.png` | 黄仙讨封：狐妖捧空白朱砂纸与悬浮铜钱 |
+| `event-empty-paper-shop.png` | `exec-a56dcce5-8e43-4f97-8c25-dfc09c47a2a0.png` | 无人纸铺：空门纸人、纸灯和后屋青火 |
+| `event-lost-woodcutter.png` | `exec-d355724d-62cc-43e1-bd14-bf8ba6ee0e3a.png` | 迷路樵夫：无面樵夫、空柴篓与三岔古道 |
+| `event-ruined-mountain-shrine.png` | `exec-23e55882-5703-421c-b49f-3157e998fe97.png` | 山神残庙：半张石像脸、孤灯与穿墙槐根 |
+
+异常记录：本批图像工具未返回模型与随机种子元数据，均记为“未提供”；未发现伪文字、假棋盘格或尺寸异常。透明图单张最大约 156KB，横向图单张均小于 80KB，像素目录总量约 8.3MB。

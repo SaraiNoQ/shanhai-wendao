@@ -1,4 +1,8 @@
+import { COLLECTION } from './collection'
+import { LORE_ENTRIES } from './lore'
+
 export type GameAssetKind = 'background' | 'character' | 'card' | 'texture'
+export type GameAssetOrientation = 'square' | 'landscape' | 'portrait'
 
 export interface GameAsset {
   key: string
@@ -11,9 +15,14 @@ export interface GameAsset {
 
 const background = (key: string, file: string, bundle: GameAsset['bundle'] = 'travel'): GameAsset => ({ key, file, width: 960, height: 540, kind: 'background', bundle })
 const character = (key: string, file: string, bundle: GameAsset['bundle'] = 'battle'): GameAsset => ({ key, file, width: 256, height: 256, kind: 'character', bundle })
-const card = (key: string, file: string): GameAsset => ({ key, file, width: 320, height: 180, kind: 'card', bundle: 'battle' })
+const card = (key: string, file: string, bundle: GameAsset['bundle'] = 'battle'): GameAsset => ({ key, file, width: 320, height: 180, kind: 'card', bundle })
+
+const reservedCollectionAssets = Object.fromEntries(COLLECTION.map((item) => [item.artKey, item.category === 'card' ? card(item.artKey, `${item.artKey.replaceAll('_', '-')}.png`) : character(item.artKey, `${item.artKey.replaceAll('_', '-')}.png`, 'character')]))
+const reservedLoreAssets = Object.fromEntries(LORE_ENTRIES.map((entry) => [entry.artKey, entry.kind === 'event' ? card(entry.artKey, `${entry.artKey.replaceAll('_', '-')}.png`, 'travel') : character(entry.artKey, `${entry.artKey.replaceAll('_', '-')}.png`)]))
 
 export const GAME_ASSETS: Readonly<Record<string, GameAsset>> = {
+  ...reservedCollectionAssets,
+  ...reservedLoreAssets,
   bg_huaiyin_road: background('bg_huaiyin_road', 'bg-huaiyin-road.png', 'battle'),
   bg_huaiyin_waystation: background('bg_huaiyin_waystation', 'bg-huaiyin-waystation.png', 'battle'),
   bg_huaiyin_roots: background('bg_huaiyin_roots', 'bg-huaiyin-roots.png', 'battle'),
@@ -61,4 +70,10 @@ export const GAME_ASSETS: Readonly<Record<string, GameAsset>> = {
 export function assetUrl(key: string) {
   const asset = GAME_ASSETS[key]
   return asset ? `/assets/pixel/${asset.file}` : undefined
+}
+
+export function assetOrientation(key: string): GameAssetOrientation | undefined {
+  const asset = GAME_ASSETS[key]
+  if (!asset) return undefined
+  return asset.width === asset.height ? 'square' : asset.width > asset.height ? 'landscape' : 'portrait'
 }
